@@ -38,8 +38,6 @@ it requires a web search, online docs or a package download.
 
 ## Running the course offline
 
-## Rules
-
 1. **Pin everything:** language packages (lock files or `==` pins), container
    images (exact tags or digests), tools (exact versions), and plugins.
 2. **Nothing from a CDN:** fonts are self-hosted (for example `@fontsource/*`), and
