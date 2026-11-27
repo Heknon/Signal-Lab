@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlaskConical, RotateCcw, X, Zap } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { api, type Scenario, type ScenarioService } from "../api";
 import { useLab } from "../context";
 import { useAsync } from "../lib/hooks";
@@ -96,7 +96,6 @@ export default function ScenarioDrawer() {
       <div className="scrim" onClick={() => setScenarioOpen(false)} />
       <aside className="drawer" aria-label="Scenario">
         <div className="drawer-head">
-          <FlaskConical style={{ width: 16, height: 16, color: "var(--warn)" }} />
           <h3>{s?.title ?? "Scenario"}</h3>
           <span className="grow" />
           {anyFault && <button className="btn btn-sm" onClick={async () => { await api.resetScenario(); state.reload(); toast("All faults cleared"); }}><RotateCcw />Clear faults</button>}
@@ -106,20 +105,17 @@ export default function ScenarioDrawer() {
           {state.error && <Empty title="Scenario unavailable">{state.error.message}</Empty>}
           {s && (
             <>
-              <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>{s.description}</p>
               <ServiceMap services={services} />
               {gen && (
                 <div className="card svc-card">
                   <div className="svc-head">
-                    <Zap style={{ width: 14, height: 14, color: "var(--accent)" }} />
                     <h4>Traffic</h4>
-                    <span className="stats">{gen.online ? `${gen.stats?.requests ?? 0} sessions` : "offline"}</span>
+                    {!gen.online && <span className="stats">offline</span>}
                   </div>
-                  <div className="svc-desc">Steady synthetic users browsing and checking out. Turn it up to see load in your dashboards.</div>
                   <Slider label="Rate" value={gen.stats?.rps ?? 0} min={0} max={20} step={0.5} format={(v) => `${v} rps`} onCommit={async (v) => { await api.load(v); state.reload(); }} />
                 </div>
               )}
-              <div className="eyebrow" style={{ margin: "18px 0 8px" }}>Inject faults</div>
+              <div className="section-label" style={{ marginTop: 20 }}>Faults</div>
               {apps.map((svc) => {
                 const st = svc.stats;
                 const faulty = !!st && (st.chaos.latency_ms > 0 || st.chaos.error_rate > 0);
@@ -136,7 +132,6 @@ export default function ScenarioDrawer() {
                       )}
                       {!svc.online && <span className="stats">offline</span>}
                     </div>
-                    <div className="svc-desc">{svc.description}</div>
                     {st && (
                       <>
                         <Slider label="Latency" value={st.chaos.latency_ms} min={0} max={2000} step={50} format={(v) => `+${v} ms`} onCommit={(v) => chaos(svc.id, { latency_ms: v })} />

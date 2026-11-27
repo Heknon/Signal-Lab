@@ -1,0 +1,4 @@
+FROM traces-apm*
+| WHERE processor.event == "transaction" AND @timestamp > NOW() - 15 minutes
+| STATS transactions = COUNT(*) BY service.name
+| SORT transactions DESC

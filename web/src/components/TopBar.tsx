@@ -98,7 +98,7 @@ function StackSummary({ onNavigate }: { onNavigate: () => void }) {
         return (
           <div key={g} style={{ padding: "6px 8px" }}>
             <div className="row" style={{ marginBottom: 6 }}>
-              {backend && <BackendLogo backend={backend} size={18} />}
+              {backend && <BackendLogo backend={backend} />}
               <span className="eyebrow" style={{ fontSize: 10.5 }}>{g}</span>
             </div>
             {items.filter((i) => i.group === g).map((i) => (

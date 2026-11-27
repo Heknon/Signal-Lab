@@ -1,0 +1,3 @@
+FROM traces-apm*
+| WHERE @timestamp > NOW() - 15 minutes
+| STATS docs = COUNT(*) BY processor.event

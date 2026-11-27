@@ -1,6 +1,6 @@
 ---
 title: How OpenTelemetry fits together
-summary: The five moving parts, and the journey a span takes from your code to a backend.
+summary: The five moving parts, and the path a span takes from your code to a backend.
 kind: quiz
 minutes: 4
 concepts: [API, SDK, OTLP, Collector, backend]

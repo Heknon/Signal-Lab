@@ -1,0 +1,8 @@
+# Development override: run the lab from your working tree.
+#   COMPOSE_FILE="$(grep ^COMPOSE_FILE= .env | cut -d= -f2):compose.dev.yaml" docker compose up -d lab
+# Rebuild the UI with `cd web && bun run build`; restart the lab after server changes.
+services:
+  lab:
+    volumes:
+      - ./web/dist:/app/web/dist:ro
+      - ./server:/app/server:ro

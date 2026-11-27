@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, AlertCircle, ChevronDown, ChevronRight, ExternalLink, Link2, X } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, ExternalLink, Link2, X } from "lucide-react";
 import type { Backend, LogRecord, Span } from "../../api";
 import { fmtDuration, fmtValue, serviceColor, shortId } from "../../lib/format";
 import { Empty } from "../ui";
@@ -71,14 +71,14 @@ export default function TraceView({ spans, backends, focus, logs, onShowLogs }: 
   useEffect(() => { if (traces.length && !traces.some((t) => t.id === traceId)) setTraceId(traces[0].id); }, [traces, traceId]);
 
   if (!spans.length) {
-    return <Empty icon={<Activity />} title="No spans yet">Run your code. Spans appear here the moment the Collector forwards them.</Empty>;
+    return <Empty title="No spans yet." />;
   }
   const rows = buildRows(current.spans, collapsed);
   const total = Math.max(current.end - current.start, 0.001);
   const trackWidth = Math.max(120, width * 0.6 - 68);
   const step = niceStep(total, Math.max(2, Math.floor(trackWidth / 78)));
   const ticks: number[] = [];
-  for (let t = 0; t <= total + 1e-9; t += step) ticks.push(t);
+  for (let t = 0; t <= total * 0.9; t += step) ticks.push(t);
   const span = current.spans.find((s) => s.span_id === selected) ?? null;
   const toggle = (id: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 

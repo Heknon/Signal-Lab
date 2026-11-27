@@ -38,8 +38,11 @@ hints:
 Compare two ways of logging the same event:
 
 ```python
-log.info(f"order {order_id} placed for {total:.2f} USD by {user}")   # ✗
-log.info("order placed", extra={                                      # ✓
+# avoid: every order produces a different message
+log.info(f"order {order_id} placed for {total:.2f} USD by {user}")
+
+# prefer: one message, the details as attributes
+log.info("order placed", extra={
     "app.order.id": order_id, "app.order.total": total, "app.user.id": user,
 })
 ```

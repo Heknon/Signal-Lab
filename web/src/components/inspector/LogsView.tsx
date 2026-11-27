@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ScrollText } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import type { LogRecord } from "../../api";
 import { fmtTime, shortId } from "../../lib/format";
 import { Empty } from "../ui";
@@ -10,7 +10,7 @@ export default function LogsView({ logs, onTrace, focusSpan }: { logs: LogRecord
   const [filter, setFilter] = useState<string | null>(focusSpan ?? null);
   useEffect(() => setFilter(focusSpan ?? null), [focusSpan]);
   if (!logs.length) {
-    return <Empty icon={<ScrollText />} title="No log records yet">Use Python's <code>logging</code> module. The SDK bridges records to OTLP and stamps them with the active trace.</Empty>;
+    return <Empty title="No logs yet." />;
   }
   const shown = filter ? logs.filter((l) => l.span_id === filter) : logs;
   return (

@@ -3,16 +3,9 @@ import { BookOpen, Check, ClipboardCheck, Code2, HelpCircle, Search as SearchIco
 import type { Backend, Capability, LessonKind } from "../api";
 import type { LessonState } from "../lib/progress";
 
-export function Empty({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
-  return (
-    <div className="empty">
-      <div className="empty-inner">
-        {icon}
-        <h4>{title}</h4>
-        {children && <p>{children}</p>}
-      </div>
-    </div>
-  );
+/** A single quiet line where content will appear. */
+export function Empty({ title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
+  return <div className="empty"><p>{title}{children ? <> {children}</> : null}</p></div>;
 }
 
 export function StateIcon({ state, current }: { state: LessonState; current?: boolean }) {
@@ -38,14 +31,13 @@ export function KindLabel({ kind }: { kind: LessonKind }) {
 export const SIGNAL_ICON: Record<Capability, ReactNode> = { traces: <Activity />, metrics: <BarChart3 />, logs: <ScrollText /> };
 export function SignalBadge({ signal }: { signal: Capability }) {
   const cls = signal === "traces" ? "badge-trace" : signal === "metrics" ? "badge-metric" : "badge-log";
-  return <span className={`badge ${cls}`}>{SIGNAL_ICON[signal]}{signal}</span>;
+  return <span className={`badge ${cls}`}>{signal}</span>;
 }
 
-export function BackendLogo({ backend, size }: { backend: Pick<Backend, "title" | "color">; size?: number }) {
-  const initials = backend.title.split(/[\s+]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
-  const style: CSSProperties = { background: backend.color ?? "var(--surface-3)" };
-  if (size) Object.assign(style, { width: size, height: size });
-  return <span className="backend-logo" style={style}>{initials}</span>;
+/** A plain colour swatch that identifies a backend (no fake logo, no initials). */
+export function BackendLogo({ backend, size = 10 }: { backend: Pick<Backend, "title" | "color">; size?: number }) {
+  const style: CSSProperties = { width: size, height: size, background: backend.color ?? "var(--text-3)" };
+  return <span className="swatch" style={style} aria-hidden />;
 }
 
 /** Resizable two-pane split. Sizes persist per `id`. */

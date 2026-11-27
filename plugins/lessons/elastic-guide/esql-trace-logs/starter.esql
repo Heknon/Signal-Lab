@@ -1,0 +1,4 @@
+FROM logs-apm*
+| WHERE trace.id == ""
+| SORT @timestamp
+| KEEP @timestamp, service.name, log.level, message

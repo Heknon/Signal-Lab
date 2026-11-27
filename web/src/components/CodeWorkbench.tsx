@@ -27,20 +27,21 @@ function Confirmations({ run }: { run: RunSummary | null }) {
   const entries = Object.entries(run.backends);
   if (!entries.length) return null;
   return (
-    <div className="confirm-row">
-      {entries.flatMap(([id, b]) =>
-        Object.entries(b.signals).map(([signal, st]) => {
-          const s = st as SignalConfirm;
-          const label = `${b.title.split(/[ +]/)[0]} · ${signal}`;
-          const icon = s.state === "found" ? <CheckCircle2 /> : s.state === "pending" ? <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} /> : <CircleDashed />;
-          const title = s.state === "found" ? `Arrived in ${b.title} after ${((s.after_ms ?? 0) / 1000).toFixed(1)}s` : s.state === "pending" ? `Waiting for ${b.title} to index it…` : s.state === "missing" ? `Not found in ${b.title} yet. It may still be indexing.` : "";
-          return s.url && s.state === "found" ? (
-            <a key={id + signal} className={`confirm ${s.state}`} href={s.url} target="_blank" rel="noreferrer" title={title}>{icon}{label}<ExternalLink /></a>
-          ) : (
-            <span key={id + signal} className={`confirm ${s.state}`} title={title}>{icon}{label}</span>
-          );
-        }),
-      )}
+    <div className="confirm-row" aria-label="Arrived in backends">
+      {entries.map(([id, b]) => {
+        const signals = Object.entries(b.signals) as [string, SignalConfirm][];
+        const states = signals.map(([, st]) => st.state);
+        const state = states.includes("pending") ? "pending" : states.every((x) => x === "found" || x === "unsupported") ? "found" : "missing";
+        const url = signals.find(([sig, st]) => sig === "traces" && st.url)?.[1].url ?? signals.find(([, st]) => st.url)?.[1].url;
+        const title = signals.map(([sig, st]) => `${sig}: ${st.state === "found" ? `arrived after ${((st.after_ms ?? 0) / 1000).toFixed(1)}s` : st.state === "pending" ? "waiting to be indexed…" : st.state === "missing" ? "not found yet" : "n/a"}`).join("\n");
+        const icon = state === "found" ? <CheckCircle2 /> : state === "pending" ? <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} /> : <CircleDashed />;
+        const label = b.title.split(/[ +]/)[0];
+        return url && state === "found" ? (
+          <a key={id} className={`confirm ${state}`} href={url} target="_blank" rel="noreferrer" title={`Open in ${b.title}\n${title}`}>{icon}{label}<ExternalLink /></a>
+        ) : (
+          <span key={id} className={`confirm ${state}`} title={`${b.title}\n${title}`}>{icon}{label}</span>
+        );
+      })}
     </div>
   );
 }
@@ -125,7 +126,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         <div className="tabs" role="tablist">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className="tab" style={{ ["--tab-color" as string]: t.color }} onClick={() => pick(t.id)}>
-              {t.icon}{t.label}
+              {t.icon}<span className="tab-label">{t.label}</span>
               {t.count !== undefined && <span className={`count ${t.count ? "live" : ""}`}>{t.count}</span>}
             </button>
           ))}
@@ -136,7 +137,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         {tab === "console" && (
           error ? <div className="query-error">{error}</div> :
           output.length === 0 ? (
-            <Empty icon={<Play />} title="Run your code">Press <span className="kbd">{modKey} ↵</span> or the Run button. Output, spans, metrics and logs show up here.</Empty>
+            <Empty title="Output appears here.">Run with <span className="kbd">{modKey} ↵</span></Empty>
           ) : (
             <div className="console" role="log">
               {output.map((o, i) => (
@@ -153,10 +154,8 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         {tab === "logs" && <LogsView logs={telemetry.logs} onTrace={jumpToTrace} focusSpan={logSpan} />}
         {tab === "env" && (
           <div>
-            <div className="env-intro">
-              Your code runs as <code>opentelemetry-instrument python {lesson.starter?.filename ?? "main.py"}</code>. The SDK reads everything below from the environment; nothing about the backend is in your code.
-            </div>
             <table className="env-table"><tbody>
+              <tr><td>command</td><td>{lesson.runtime.auto_instrument === false ? "" : "opentelemetry-instrument "}python {lesson.starter?.filename ?? "main.py"}</td></tr>
               {Object.entries(lesson.env).map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}
             </tbody></table>
           </div>

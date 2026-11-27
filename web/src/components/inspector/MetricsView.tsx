@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, BarChart3, ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 import type { Backend, Metric, Series } from "../../api";
 import { fmtNumber } from "../../lib/format";
 import { Empty } from "../ui";
@@ -143,7 +143,7 @@ function MetricCard({ m, backends, onExemplar }: { m: Metric; backends: Backend[
 
 export default function MetricsView({ metrics, backends, onExemplar }: { metrics: Metric[]; backends: Backend[]; onExemplar?: (traceId: string, spanId: string | null) => void }) {
   if (!metrics.length) {
-    return <Empty icon={<BarChart3 />} title="No metrics yet">Metrics are exported on an interval and when the program exits, so they land a moment after spans.</Empty>;
+    return <Empty title="No metrics yet." />;
   }
   return (
     <div className="metrics-grid">

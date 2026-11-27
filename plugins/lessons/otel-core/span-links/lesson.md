@@ -45,5 +45,5 @@ them to decide whether to keep the span.
 ## Try it
 
 Each `enqueue` creates its own trace. Capture their span contexts and link
-`process-batch` to them. In the waterfall, linked spans show a 🔗 icon, and
+`process-batch` to them. In the waterfall, linked spans show a link icon, and
 the detail panel lists the trace ids they point to.

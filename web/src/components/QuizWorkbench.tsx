@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, CheckCircle2, ClipboardCheck, XCircle } from "lucide-react";
 import { api, type Backend, type CheckResult, type Lesson } from "../api";
 import { useLab } from "../context";
-import { BackendLogo, Empty, InlineCode } from "./ui";
+import { BackendLogo, InlineCode } from "./ui";
 
 /** Links into backend UIs that a lesson asks you to use, e.g. `elastic:apm`. */
 export function ToolLinks({ tools }: { tools: string[] }) {
@@ -19,7 +19,7 @@ export function ToolLinks({ tools }: { tools: string[] }) {
       {resolved.map(({ b, l }) => (
         <a key={b.id + l.id} className="tool-link" href={l.url} target="_blank" rel="noreferrer">
           <BackendLogo backend={b as Backend} />
-          <span className="stack" style={{ minWidth: 0 }}><span className="t">{l.label}</span>{l.description && <span className="d">{l.description}</span>}</span>
+          <span className="t">{l.label}</span>
           <ArrowUpRight />
         </a>
       ))}
@@ -37,7 +37,7 @@ export function QuizWorkbench({ lesson, onChecks }: { lesson: Lesson; onChecks: 
   useEffect(() => {
     onChecks(questions.map((q, i) => ({
       id: q.id, title: `Question ${i + 1}`, type: "answer",
-      status: results[q.id]?.correct ? "pass" : results[q.id] ? "fail" : "pending",
+      status: results[q.id]?.correct ? "pass" : "fail",
       detail: results[q.id] && !results[q.id].correct ? results[q.id].explanation : "",
     })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,7 +54,7 @@ export function QuizWorkbench({ lesson, onChecks }: { lesson: Lesson; onChecks: 
       <div className="quiz">
         {lesson.tools.length > 0 && (
           <div>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>Investigate with</div>
+            <div className="section-label">Open</div>
             <ToolLinks tools={lesson.tools} />
           </div>
         )}
@@ -123,21 +123,14 @@ export function TaskWorkbench({ lesson, onChecks }: { lesson: Lesson; onChecks: 
   return (
     <div className="workbench" style={{ overflow: "auto" }}>
       <div className="quiz">
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>Open the tools</div>
-          <ToolLinks tools={lesson.tools} />
-          {!lesson.tools.length && <Empty title="No tools linked" />}
-        </div>
-        <div className="card question">
-          <h4><ClipboardCheck style={{ width: 16, height: 16, color: "var(--accent)" }} />When you're done, verify your work</h4>
-          <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>Signal Lab checks the result through the backend's API. Nothing is uploaded from your browser.</p>
+        <ToolLinks tools={lesson.tools} />
+        <div className="row">
           <button className="btn btn-primary" onClick={verify} disabled={busy}>{busy ? <span className="spinner" /> : <ClipboardCheck />}Verify</button>
-          {checks && checks.map((c) => (
-            <div key={c.id} className={`feedback ${c.status === "pass" ? "ok" : "err"}`}>
-              {c.status === "pass" ? <CheckCircle2 /> : <XCircle />}
-              <span><b><InlineCode text={c.title} /></b><br /><InlineCode text={c.detail} /></span>
-            </div>
-          ))}
+          {checks && (
+            <span className={checks.every((c) => c.status === "pass") ? "run-status ok" : "run-status err"}>
+              {checks.filter((c) => c.status === "pass").length} of {checks.length} checks pass
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Check, ChevronRight, Eye, FlaskConical, Lightbulb, Lock, RotateCcw, SkipForward, Target, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Eye, FlaskConical, Lightbulb, Lock, RotateCcw, SkipForward, X } from "lucide-react";
 import { api, type CheckResult, type Lesson } from "../api";
 import { useLab, type FlatLesson } from "../context";
 import { useAsync, useHotkey } from "../lib/hooks";
@@ -10,7 +10,7 @@ import QueryWorkbench from "../components/QueryWorkbench";
 import { QuizWorkbench, TaskWorkbench, ToolLinks } from "../components/QuizWorkbench";
 import Markdown from "../components/Markdown";
 import TopBar from "../components/TopBar";
-import { Empty, InlineCode, KindLabel, Split, StateIcon } from "../components/ui";
+import { Empty, InlineCode, Split, StateIcon } from "../components/ui";
 
 function Sidebar({ current }: { current: FlatLesson }) {
   const { course } = useLab();
@@ -20,7 +20,6 @@ function Sidebar({ current }: { current: FlatLesson }) {
   return (
     <nav className="sidebar" aria-label="Course outline">
       <div className="sidebar-pack">
-        <span className="eyebrow">Track</span>
         {course.length > 1 ? (
           <select className="select" value={pack.id} onChange={(e) => {
             const target = course.find((c) => c.id === e.target.value);
@@ -49,21 +48,18 @@ function Sidebar({ current }: { current: FlatLesson }) {
   );
 }
 
-function Goals({ lesson, results, onComplete }: { lesson: Lesson; results: CheckResult[]; onComplete: () => void }) {
+function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) {
   const p = useProgress();
   const byId = new Map(results.map((r) => [r.id, r]));
-  const items = lesson.kind === "quiz"
-    ? (lesson.quiz?.questions ?? []).map((q, i) => ({ id: q.id, title: `Question ${i + 1}` }))
-    : lesson.checks.map((c) => ({ id: c.id, title: c.title }));
+  // Quiz questions are their own goals; listing "Question 1..n" again is noise.
+  const items = lesson.kind === "quiz" ? [] : lesson.checks.map((c) => ({ id: c.id, title: c.title }));
   const passed = items.filter((i) => byId.get(i.id)?.status === "pass").length;
   const complete = items.length > 0 && passed === items.length;
-  useEffect(() => { if (complete) onComplete(); }, [complete, onComplete]);
   if (!items.length) return null;
   const wasDone = !!p.completed[lesson.id];
   return (
     <section className={`card goals ${complete ? "complete" : ""}`} aria-label="Goals">
       <div className="goals-head">
-        <Target style={{ width: 14, height: 14, color: complete ? "var(--accent)" : "var(--text-3)" }} />
         {complete ? "All goals met" : "Goals"}
         <span className="progress-text">{passed}/{items.length}</span>
       </div>
@@ -129,6 +125,17 @@ export default function LessonPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, toast]);
 
+  // A lesson is complete when every goal passes (every question, for quizzes).
+  const required = (l0: Lesson) => (l0.kind === "quiz" ? (l0.quiz?.questions ?? []).map((q) => q.id) : l0.checks.map((c) => c.id));
+  useEffect(() => {
+    const l0 = lesson.data;
+    if (!l0) return;
+    const ids = required(l0);
+    const passed = new Set(results.filter((r) => r.status === "pass").map((r) => r.id));
+    if (ids.length > 0 && ids.every((x) => passed.has(x))) onComplete();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, lesson.data, onComplete]);
+
   const neighbours = useMemo(() => {
     if (!flat) return { prev: undefined, next: undefined };
     return { prev: lessons[flat.index - 1], next: lessons[flat.index + 1] };
@@ -150,18 +157,13 @@ export default function LessonPage() {
       {lesson.error && <Empty title="Lesson not found">{lesson.error.message}</Empty>}
       {l && (
         <article className="lesson-inner">
-          <div className="lesson-kicker">
-            {flat && <span className="eyebrow">{flat.module.title} · {posInModule} of {flat.module.lessons.length}</span>}
-            <KindLabel kind={l.kind} />
-            <span className="subtle" style={{ fontSize: 12 }}>{l.minutes} min</span>
+          <div className="lesson-meta">
+            {flat && <span>{flat.module.title} {posInModule}/{flat.module.lessons.length}</span>}
+            <span>{l.minutes} min</span>
+            {l.assumes.length > 0 && <span>Assumes: {l.assumes.join(", ")}</span>}
           </div>
           <h1>{l.title}</h1>
-          <p className="lesson-summary">{l.summary}</p>
           <div className="lesson-actions">
-            {l.assumes.length > 0 && (
-              <span className="assumes">Assumes {l.assumes.map((a) => <span key={a} className="badge badge-outline">{a}</span>)}</span>
-            )}
-            <span className="grow" />
             {state === "known" ? (
               <button className="btn btn-ghost btn-sm" onClick={() => progress.setKnown([id], false)}><RotateCcw />Unmark known</button>
             ) : !complete && (
@@ -178,13 +180,13 @@ export default function LessonPage() {
               <span>{l.scenario?.note ?? "This lesson changed the scenario."} Faults are active on <b>{scenarioNote.join(", ")}</b>. <a href="#" onClick={(e) => { e.preventDefault(); setScenarioOpen(true); }} style={{ textDecoration: "underline" }}>Open scenario</a></span>
             </div>
           )}
-          <Goals lesson={l} results={results} onComplete={onComplete} />
+          <Goals lesson={l} results={results} />
           <Markdown>{l.body}</Markdown>
           {l.kind === "code" && l.tools.length > 0 && <div style={{ margin: "8px 0 20px" }}><ToolLinks tools={l.tools} /></div>}
           <Hints key={l.id} hints={l.hints} />
           <nav className="pager" aria-label="Lesson navigation">
-            {neighbours.prev ? <Link to={`/learn/${neighbours.prev.id}`}><span className="eyebrow">Previous</span><span className="t">{neighbours.prev.title}</span></Link> : <span />}
-            {neighbours.next && <Link className={`next ${complete ? "highlight" : ""}`} to={`/learn/${neighbours.next.id}`}><span className="eyebrow">Next{neighbours.next.module.id !== flat?.module.id ? ` · ${neighbours.next.module.title}` : ""}</span><span className="t">{neighbours.next.title}</span></Link>}
+            {neighbours.prev ? <Link className="prev" to={`/learn/${neighbours.prev.id}`}><ArrowLeft />{neighbours.prev.title}</Link> : <span />}
+            {neighbours.next && <Link className={`next ${complete ? "highlight" : ""}`} to={`/learn/${neighbours.next.id}`}>{neighbours.next.title}<ArrowRight /></Link>}
           </nav>
         </article>
       )}

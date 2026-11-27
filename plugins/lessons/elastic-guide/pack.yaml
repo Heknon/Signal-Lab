@@ -1,0 +1,33 @@
+id: elastic-guide
+title: Investigating with Elastic
+description: >
+  Use Kibana's APM UI, Discover and ES|QL to find your way around the Signal
+  Shop's traces and logs, track down failing requests, and keep watch with a
+  dashboard and an alerting rule. Needs the elastic backend
+  (`./lab use elastic`).
+order: 30
+icon: search
+requires:
+  backends: [elastic]
+modules:
+  - id: kibana-apm
+    title: Kibana APM
+    description: >
+      Services, transactions, trace waterfalls and the service map, then an
+      investigation that follows a failure from symptom to source and from
+      logs to traces.
+    assumes: [What a trace and a span are]
+    lessons: [services-and-map, trace-waterfall, failing-service, logs-and-traces]
+  - id: esql
+    title: ES|QL
+    description: >
+      Elastic's piped query language: count, aggregate, compute failure
+      rates and pull every log for a trace, straight from the APM data
+      streams.
+    assumes: [Basic SQL or another query language]
+    lessons: [esql-count, esql-latency, esql-failure-rate, esql-trace-logs]
+  - id: dashboards-alerts
+    title: Dashboards & alerts
+    description: A Kibana dashboard for the shop, and a rule that tells you when checkout gets slow.
+    assumes: [Finding your way around Kibana]
+    lessons: [shop-dashboard, latency-rule]

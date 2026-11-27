@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Database, ExternalLink, Play, RotateCcw, Table2, LineChart } from "lucide-react";
+import { ExternalLink, Play, RotateCcw, Table2, LineChart } from "lucide-react";
 import { api, type CheckResult, type Lesson, type QueryResult } from "../api";
 import { useLab } from "../context";
 import { modKey } from "../lib/hooks";
@@ -42,7 +42,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
   const onEdit = (v: string) => { setQuery(v); if (v.trim() === starter) drafts.clear(lesson.id); else drafts.set(lesson.id, v); };
 
   if (!backend?.enabled) {
-    return <Empty icon={<Database />} title={`${backend?.title ?? q.backend} isn't enabled`}>Enable the <code>{q.backend}</code> backend plugin to run these queries. See the Stack page.</Empty>;
+    return <Empty title={`Needs the ${q.backend} backend.`}><code>./lab use {q.backend}</code></Empty>;
   }
   const explore = backend.links.find((l) => l.id === "explore" || l.id === "esql");
   const lang = (q.language === "promql" ? "metricsql" : q.language) as EditorLanguage;
@@ -50,7 +50,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
   const editorPane = (
     <div className="stack" style={{ height: "100%" }}>
       <div className="wb-bar">
-        <span className="file-tab" style={{ fontFamily: "var(--font-sans)" }}><BackendLogo backend={backend} size={18} />{LANG_LABEL[q.language] ?? q.language}<span className="subtle">· {backend.title}</span></span>
+        <span className="file-tab" style={{ fontFamily: "var(--font-sans)" }}><BackendLogo backend={backend} />{LANG_LABEL[q.language] ?? q.language}<span className="subtle">· {backend.title}</span></span>
         <span className="spacer" />
         {result?.stats?.series !== undefined && !error && <span className="run-status">{fmtNumber(result.stats.series)} series</span>}
         {result?.stats?.rows !== undefined && !error && <span className="run-status">{fmtNumber(result.stats.rows)} rows</span>}
@@ -87,7 +87,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
       </div>
       <div className="panel-body">
         {error && <div className="query-error">{error}</div>}
-        {!result && !error && <Empty icon={<Play />} title="Run a query">Results come straight from {backend.title}, against live data from the scenario.</Empty>}
+        {!result && !error && <Empty title="Results appear here." />}
         {result && !error && view === "chart" && result.series.length > 0 && (
           <>
             <div className="chart-wrap"><Chart series={result.series} /></div>
@@ -98,7 +98,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
           </>
         )}
         {result && !error && (view === "table" || !result.series.length) && (
-          result.rows.length === 0 ? <Empty title="No data">The query ran but returned nothing. Check the metric or index name, and that the scenario is sending traffic.</Empty> : (
+          result.rows.length === 0 ? <Empty title="No data." /> : (
             <table className="result-table">
               <thead><tr>{result.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
               <tbody>

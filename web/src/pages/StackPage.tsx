@@ -20,13 +20,12 @@ export default function StackPage() {
       <main className="page">
         <div className="stack-page">
           <h1>Stack &amp; plugins</h1>
-          <p className="muted" style={{ margin: "0 0 28px", fontSize: 14 }}>What's running, how telemetry flows through the Collector, and which plugins are loaded.</p>
 
-          <section className="section" style={{ paddingTop: 0 }}>
-            <div className="section-head"><div><h2>Collector pipelines</h2><p>Every pipeline starts at the same OTLP receiver, so each signal fans out to every backend and to the lab's live inspector.</p></div></div>
+          <section className="section">
+            <div className="section-head"><h2>Collector pipelines</h2></div>
             <div className="card">
               {pipelines.length === 0 ? (
-                <div className="pipeline"><span className="muted">{meta?.collector ? "Collector config not mounted into the lab." : "Dev mode: the SDK exports straight to the lab's tap, with no Collector in between."}</span></div>
+                <div className="pipeline"><span className="muted">{meta?.collector ? "Collector config isn't mounted into the lab." : "No Collector: the SDK exports straight to the lab."}</span></div>
               ) : (
                 <div className="pipeline">
                   {pipelines.map(([name, p]) => {
@@ -56,12 +55,12 @@ export default function StackPage() {
           </section>
 
           <section className="section">
-            <div className="section-head"><div><h2>Backends</h2><p>Each backend is a folder in <code>plugins/backends/</code> with a manifest, Compose file, Collector fragment and adapter.</p></div></div>
+            <div className="section-head"><h2>Backends</h2></div>
             <div className="card">
               {(plugins.data?.backends ?? []).map((b) => (
                 <div key={b.id} className="plugin-row">
                   <div>
-                    <h4><BackendLogo backend={b} size={20} />{b.title}{b.enabled ? <span className="badge badge-ok">enabled</span> : <span className="badge">available</span>}</h4>
+                    <h4><BackendLogo backend={b} />{b.title}{b.enabled ? <span className="badge badge-ok">enabled</span> : <span className="badge">available</span>}</h4>
                     <p>{b.description}</p>
                     <div className="row" style={{ marginTop: 6, flexWrap: "wrap", gap: 4 }}>
                       {b.capabilities.map((c) => <SignalBadge key={c} signal={c} />)}
@@ -86,7 +85,7 @@ export default function StackPage() {
           </section>
 
           <section className="section">
-            <div className="section-head"><div><h2>Lesson packs &amp; scenarios</h2><p>Lessons are Markdown + Python + YAML checks. Add a folder to <code>plugins/lessons/</code> to extend the course.</p></div></div>
+            <div className="section-head"><h2>Lesson packs &amp; scenarios</h2></div>
             <div className="card">
               {(plugins.data?.lesson_packs ?? []).map((p) => (
                 <div key={p.id} className="plugin-row">
