@@ -715,3 +715,4 @@ a.confirm:hover { background: var(--hover); }
 .inline-editor { border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-sunken); }
 .inline-editor .editor-host { height: auto; }
 .inline-editor .cm-editor { min-height: 60px; max-height: 160px; }
+.ok-text { color: var(--ok); font-variant-numeric: tabular-nums; }

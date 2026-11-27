@@ -78,6 +78,18 @@ class Drills:
         self.current: Activity | None = None
         self.last: dict[str, Activity] = {}
         self._task: asyncio.Task | None = None
+        # Game-day board: lesson -> person -> question -> seconds since the activity started
+        self.solved: dict[str, dict[str, dict[str, float]]] = {}
+
+    def record(self, lesson: str, person: str, question: str) -> None:
+        act = self.last.get(lesson)
+        if not act:
+            return
+        board = self.solved.setdefault(lesson, {}).setdefault(person, {})
+        board.setdefault(question, round(time.time() - act.started))
+
+    def board(self, lesson: str) -> dict:
+        return self.solved.get(lesson, {})
 
     def busy(self) -> bool:
         return self.current is not None and self.current.status == "running"
@@ -109,6 +121,7 @@ class Drills:
             total = spec.get("duration_s", 600)
             phases = []
         act = Activity(kind=kind, lesson=lesson, title=title, by=by, started=now, ends=now + total, phases=phases, steady=spec.get("steady_state"))
+        self.solved.pop(lesson, None)  # a new run starts a fresh board
         self.current = act
         self.last[lesson] = act
         runner = self._experiment(act, spec) if kind == "experiment" else self._incident(act, spec)

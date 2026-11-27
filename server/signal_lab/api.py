@@ -543,8 +543,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ------------------------------------------------------------ quiz & verify
     @app.post("/api/lessons/{pack}/{slug}/answer")
-    async def answer(pack: str, slug: str, req: AnswerRequest) -> dict:
+    async def answer(pack: str, slug: str, req: AnswerRequest, request: Request) -> dict:
         lesson = lesson_or_404(f"{pack}/{slug}")
+        out = await _answer(lesson, req)
+        if out.get("correct") and lesson.kind in ("experiment", "incident"):
+            drills.record(lesson.id, request.state.user.display_name, req.question)
+        return out
+
+    @app.get("/api/admin/gameday")
+    async def gameday() -> dict:
+        act = drills.current
+        lesson_id = act.lesson if act else None
+        lesson = registry.lesson(lesson_id) if lesson_id else None
+        questions = [{"id": q.get("id", f"q{i}"), "prompt": q.get("prompt", "")} for i, q in enumerate(((lesson.meta.get("quiz") or {}).get("questions", [])) if lesson else [])]
+        return {"activity": act.public(reveal=True) if act else None, "questions": questions, "board": drills.board(lesson_id) if lesson_id else {}}
+
+    async def _answer(lesson, req: AnswerRequest) -> dict:
         questions = (lesson.meta.get("quiz") or {}).get("questions", [])
         for i, q in enumerate(questions):
             if q.get("id", f"q{i}") == req.question and q.get("kind") == "time":

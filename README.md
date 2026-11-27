@@ -56,18 +56,44 @@ Open **http://localhost:8000**. Grafana is on `:3000`, Kibana on `:5601`, Jaeger
 
 | Track | Needs | What you learn |
 |---|---|---|
-| **OpenTelemetry Foundations** | any backend | spans, nesting, attributes and events, errors, semantic conventions, links, auto-instrumentation, HTTP and queue propagation, baggage, counters, histograms, gauges, cardinality, structured logs, log correlation, manual SDK setup, sampling, views, Collector pipelines |
+| **OpenTelemetry Foundations** | any backend | spans, nesting, attributes and events, errors, semantic conventions, links, auto-instrumentation, HTTP and queue propagation, baggage, counters, histograms, gauges, cardinality, exemplars, structured logs, log correlation, manual SDK setup, sampling, views |
+| **The OpenTelemetry Collector** | any backend | edit a real Collector config: filtering, redaction, OTTL transforms, tail sampling, span metrics |
 | **Metrics with VictoriaMetrics & Grafana** | `victoriametrics` | MetricsQL from selectors to `histogram_quantile`, error ratios, building dashboards, finding a slow service |
+| **Logs with VictoriaLogs & Grafana** | `victorialogs` | LogsQL filters, stats, log volume, logs for a trace, error ratios |
 | **Investigating with Elastic** | `elastic` | Kibana APM, the service map, errors, ES\|QL, dashboards and alerts |
+| **Observability in practice** | `victoriametrics` | choosing the right signal (and when to emit nothing), telemetry budgets, RED/USE/golden signals, SLIs, SLOs, error budgets, burn-rate alerts, chaos experiments, and seven incidents investigated from metrics alone |
 
-Lessons come in four kinds: **code** (Python, graded on exported telemetry),
-**query** (MetricsQL or ES|QL against live data, graded against a reference
-query), **quiz**, and **hands-on tasks** in Grafana or Kibana, verified
-through their APIs.
+Lessons come in several kinds:
+
+- **code**: Python, graded on the telemetry it exports.
+- **collector**: a Collector config, graded on what comes out of it.
+- **query**: MetricsQL, LogsQL or ES|QL against live data, graded against a reference query.
+- **quiz**.
+- **hands-on tasks** in Grafana or Kibana, verified through their APIs.
+- **chaos experiments**: a hypothesis, a live steady-state chart and an abort condition.
+- **incidents**: a symptom, a hidden fault timeline, and answers graded against what really happened.
 
 The **Signal Shop** scenario (storefront → checkout → inventory/payments, plus
 a load generator) provides realistic background traffic. The *Scenario*
 drawer lets you inject latency and errors into any service.
+
+## Teams
+
+By default the lab runs in **open** mode: no login, one shared progress
+record, right for your own machine. For a team, set accounts mode (the Helm
+chart does this by default):
+
+```bash
+SIGNAL_LAB_AUTH=accounts ./lab up      # first account to sign up becomes admin
+```
+
+Everyone signs in and gets their own progress, drafts and run history,
+stored in Postgres. Admins see the **People** page, with everyone's progress
+and a live **game day** board: start an incident, and the whole team
+investigates the same shop while the board shows who found what, and when.
+`SIGNAL_LAB_SCENARIO_CONTROL=admins` keeps faults and incidents in admins'
+hands; faults injected by lessons clear themselves after
+`SIGNAL_LAB_FAULT_TTL` seconds.
 
 ## Deploy on Kubernetes
 
@@ -76,7 +102,7 @@ helm install signal-lab charts/signal-lab
 kubectl port-forward svc/signal-lab 8000:8000
 ```
 
-VictoriaMetrics + Grafana and Jaeger are bundled and enabled by default;
+VictoriaMetrics + Grafana, VictoriaLogs, Jaeger and Postgres are bundled and enabled by default, with accounts on;
 Elastic is opt-in (`--set backends.elastic.enabled=true`), and every backend
 can point at an existing installation instead (`mode: external`). See
 [`charts/signal-lab/README.md`](charts/signal-lab/README.md).
@@ -85,8 +111,9 @@ can point at an existing installation instead (`mode: external`). See
 
 | Component | Role |
 |---|---|
-| `lab` | FastAPI app serving the UI, lessons, the check engine and an OTLP/HTTP **tap** that feeds the live inspector |
-| `runner` | Executes learner code with the OTel SDK. Separate container: read-only filesystem, no capabilities, resource limits, and (on Kubernetes) a NetworkPolicy |
+| `lab` | FastAPI app serving the UI, lessons, the check engine, accounts, the experiment/incident engine, and an OTLP/HTTP **tap** that feeds the live inspector |
+| `postgres` | Accounts, progress, editor drafts and run history (the lab falls back to memory without it) |
+| `runner` | Executes learner code with the OTel SDK, and a slim Collector (built from `deploy/collector/builder.yaml`) for Collector lessons. Separate container: read-only filesystem, no capabilities, resource limits, and (on Kubernetes) a NetworkPolicy |
 | `collector` | OpenTelemetry Collector Contrib. `deploy/collector/base.yaml` plus one fragment per enabled backend |
 | `storefront`, `checkout`, `inventory`, `payments`, `loadgen` | The Signal Shop scenario, auto-instrumented |
 | backends | Defined by plugins in `plugins/backends/` |
@@ -120,6 +147,8 @@ Test every lesson against a running lab:
 
 ```bash
 python3 scripts/test_lessons.py            # or: python3 scripts/test_lessons.py otel-core/counters
+python3 scripts/test_incidents.py          # each incident's fault produces its evidence
+.venv/bin/python -m pytest server/tests    # API, accounts (set TEST_DATABASE_URL for Postgres) and checks
 ```
 
 ## Developing
