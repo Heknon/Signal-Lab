@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from . import __version__, auth, checks, otlp, runner
 from .config import Settings
 from .db import create_db
+from .drills import Drills, scalar
 from .plugins import Registry
 from .store import RUN_ATTR, Run, Store
 
@@ -45,6 +46,9 @@ class AnswerRequest(BaseModel):
 
 
 class ChaosRequest(BaseModel):
+    """Fault settings, passed through to the scenario service (see the shop's Chaos model)."""
+
+    model_config = {"extra": "allow"}
     latency_ms: int | None = None
     error_rate: float | None = None
 
@@ -461,6 +465,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for col in expect.get("columns", []):
             if col not in res.columns:
                 return checks.result(c, checks.FAIL, f"Result has no `{col}` column (columns: {', '.join(res.columns) or 'none'}).")
+        if expect.get("top") or "value" in expect:
+            vcol = res.columns.index("value") if "value" in res.columns else len(res.columns) - 1
+            numeric = [r for r in res.rows if isinstance(r[vcol], (int, float))]
+            if not numeric:
+                return checks.result(c, checks.FAIL, "The query returned no numbers.")
+            top = max(numeric, key=lambda r: r[vcol])
+            for label, want in (expect.get("top") or {}).items():
+                if label not in res.columns:
+                    return checks.result(c, checks.FAIL, f"Group by `{label}` so the answer shows which one stands out.")
+                got = top[res.columns.index(label)]
+                if str(got) != str(want):
+                    return checks.result(c, checks.FAIL, f"Your query points at `{label}={got}`. " + c.get("hint", "Look again."))
+            if "value" in expect and not checks._value_matches(top[vcol], expect["value"]):
+                return checks.result(c, checks.FAIL, f"Your query returns {top[vcol]:.3g}. " + c.get("hint", "That doesn't show the problem yet."))
         if c.get("reference"):
             ref = await b.adapter.query(c.get("language", req.language), c["reference"], at_ms=at_ms, range_s=req.range_s)
             if ref is None or ref.error:
@@ -529,6 +547,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lesson = lesson_or_404(f"{pack}/{slug}")
         questions = (lesson.meta.get("quiz") or {}).get("questions", [])
         for i, q in enumerate(questions):
+            if q.get("id", f"q{i}") == req.question and q.get("kind") == "time":
+                act = drills.last.get(lesson.id)
+                if not act or act.fault_started is None:
+                    return {"correct": False, "explanation": "Start the incident and let it run first."}
+                try:
+                    picked = float(req.answer if isinstance(req.answer, str) else req.answer[0]) / 1000
+                except (TypeError, ValueError, IndexError):
+                    return {"correct": False, "explanation": "Enter a time."}
+                off = picked - act.fault_started
+                tol = float(q.get("tolerance_s", 120))
+                if abs(off) <= tol:
+                    return {"correct": True, "explanation": q.get("explanation", f"It started at {time.strftime('%H:%M:%S', time.localtime(act.fault_started))}.")}
+                return {"correct": False, "explanation": f"About {abs(off) / 60:.0f} min too {'late' if off > 0 else 'early'}. " + q.get("hint", "Look for where the line first leaves its usual band.")}
+            if q.get("id", f"q{i}") == req.question and q.get("kind") == "outcome":
+                act = drills.last.get(lesson.id)
+                if not act or act.status == "running":
+                    return {"correct": False, "explanation": "Run the experiment to the end first."}
+                actual = "aborted" if act.status == "aborted" else "held" if act.hypothesis_held else "rejected"
+                if act.status == "stopped":
+                    return {"correct": False, "explanation": "The run was stopped early. Run it again to the end."}
+                ok = str(req.answer if isinstance(req.answer, str) else req.answer[0]) == actual
+                return {"correct": ok, "explanation": q.get("explanation", "") if ok else "Look at the chart again: compare the line to the limit during the fault window."}
+            if q.get("id", f"q{i}") == req.question and q.get("kind") == "query":
+                b = backend_or_404(q.get("backend", "victoriametrics"))
+                learner_q = req.answer if isinstance(req.answer, str) else " ".join(req.answer)
+                at_ms = int(time.time() * 1000)
+                res = await b.adapter.query(q.get("language", "metricsql"), learner_q, at_ms=at_ms, range_s=900)
+                if res is None or res.error:
+                    return {"correct": False, "explanation": f"The query failed: {res.error if res else 'unsupported'}"}
+                check = {"id": q.get("id"), "type": "query", "title": q.get("prompt", "")} | {k: q[k] for k in ("reference", "must_include", "expect", "tolerance", "value_columns", "ignore_columns", "hint") if k in q}
+                graded = await grade_query(check, b, QueryRequest(backend=b.id, language=q.get("language", "metricsql"), query=learner_q), res, at_ms)
+                ok = graded["status"] == checks.PASS
+                return {"correct": ok, "explanation": q.get("explanation", "That query shows it.") if ok else graded["detail"]}
             if q.get("id", f"q{i}") == req.question:
                 expected = q["answer"]
                 correct = sorted(map(str, expected)) == sorted(map(str, req.answer)) if isinstance(expected, list) else str(req.answer).strip().lower() == str(expected).strip().lower()
@@ -590,9 +641,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "Unknown service")
         try:
             r = await http.post(svc["url"].rstrip("/") + "/_chaos", json=req.model_dump(exclude_none=True))
+            if r.status_code != 200:
+                raise HTTPException(502, f"{service_id} rejected the change (HTTP {r.status_code}).")
             state = r.json()
             user = auth.current_user.get()
-            active = bool(state.get("latency_ms") or state.get("error_rate"))
+            active = bool(state.get("active", state.get("latency_ms") or state.get("error_rate")))
             if active:
                 scenario_changes[service_id] = {"by": user.display_name if user else "lab", "at": time.time(), "expires": time.time() + ttl_s if ttl_s else None}
             else:
@@ -621,7 +674,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for service_id, change in list(scenario_changes.items()):
                 if change.get("expires") and change["expires"] < now:
                     try:
-                        await set_chaos(service_id, ChaosRequest(latency_ms=0, error_rate=0))
+                        await set_chaos(service_id, ChaosRequest(reset=True))
                         log.info("fault on %s expired", service_id)
                     except HTTPException:
                         scenario_changes.pop(service_id, None)
@@ -638,9 +691,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for svc in s.services():
             if svc["role"] != "loadgen":
                 try:
-                    await http.post(svc["url"].rstrip("/") + "/_chaos", json={"latency_ms": 0, "error_rate": 0})
+                    await http.post(svc["url"].rstrip("/") + "/_chaos", json={"reset": True})
                 except httpx.HTTPError:
                     pass
+        return {"ok": True}
+
+    # ------------------------------------------------------------ experiments & incidents
+    async def _apply(faults: dict[str, dict]) -> None:
+        for service_id, settings_ in faults.items():
+            try:
+                await set_chaos(service_id, ChaosRequest(**settings_))
+            except HTTPException as e:
+                log.warning("could not apply fault to %s: %s", service_id, e.detail)
+
+    async def _load(rps: float) -> None:
+        try:
+            await set_load(LoadRequest(rps=rps))
+        except HTTPException:
+            pass
+
+    async def _reset() -> None:
+        try:
+            await reset_scenario()
+            await _load(2)
+        except HTTPException:
+            pass
+
+    async def _query(backend_id: str, language: str, q: str) -> float | None:
+        b = registry.backends.get(backend_id)
+        if not b or not b.enabled or not b.adapter:
+            return None
+        try:
+            return scalar(await b.adapter.query(language, q, range_s=60))
+        except Exception:
+            return None
+
+    drills = Drills(_apply, _load, _reset, _query)
+    app.state.drills = drills
+
+    @app.get("/api/activity")
+    async def activity(lesson: str | None = None) -> dict:
+        last = drills.last.get(lesson) if lesson else None
+        return {"current": drills.state(), "last": last.public() if last and last is not drills.current else None}
+
+    @app.post("/api/lessons/{pack}/{slug}/start")
+    async def start_activity(pack: str, slug: str, request: Request) -> dict:
+        lesson = lesson_or_404(f"{pack}/{slug}")
+        if lesson.kind not in ("experiment", "incident"):
+            raise HTTPException(400, "This lesson has nothing to start.")
+        user = request.state.user
+        if settings.scenario_control == "admins" and user.role != "admin":
+            raise HTTPException(403, "On this deployment, only admins start experiments and incidents.")
+        if not registry.scenario():
+            raise HTTPException(400, "No scenario is enabled.")
+        try:
+            act = drills.start(lesson.kind, lesson.id, lesson.meta.get("title", lesson.id), user.display_name, lesson.meta.get(lesson.kind) or {})
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        return act.public()
+
+    @app.post("/api/activity/stop")
+    async def stop_activity(request: Request) -> dict:
+        user = request.state.user
+        cur = drills.current
+        if cur and cur.status == "running" and cur.by != user.display_name and user.role != "admin":
+            raise HTTPException(403, f"Only {cur.by} or an admin can stop this.")
+        await drills.stop(f"Stopped by {user.display_name}")
         return {"ok": True}
 
     @app.post("/api/lessons/{pack}/{slug}/setup")

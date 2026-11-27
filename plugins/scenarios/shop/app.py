@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import random
+import sys
 import time
 import uuid
 from collections import deque
@@ -59,11 +60,34 @@ except ImportError:  # pragma: no cover
 
 # ------------------------------------------------------------------ chaos & stats
 class Chaos(BaseModel):
-    latency_ms: int | None = None
-    error_rate: float | None = None
+    """Every fault the lab can inject. Unset fields are left as they are."""
+
+    reset: bool = False
+    latency_ms: int | None = None  # every request is slower
+    error_rate: float | None = None  # share of requests failing with 503
+    slow_sku: str | None = None  # inventory: only reservations of this SKU are slow
+    slow_sku_ms: int | None = None
+    retries: int | None = None  # checkout: retries for failed payment calls (no backoff)
+    pool_size: int | None = None  # inventory: DB connection pool size
+    gold_error_rate: float | None = None  # checkout: failures for gold-tier users only
+    empty_cart_rate: float | None = None  # storefront: silently drops cart items
+    leak_mb_per_min: float | None = None  # memory leak until an OOM-style restart
+    label_user_id: bool | None = None  # storefront: adds user ids to a metric (cardinality bomb)
+    version: str | None = None  # "deploy": restart with this service.version
 
 
-chaos = {"latency_ms": 0, "error_rate": 0.0}
+DEFAULTS = {
+    "latency_ms": 0, "error_rate": 0.0, "slow_sku": None, "slow_sku_ms": 0, "retries": 0, "pool_size": 10,
+    "gold_error_rate": 0.0, "empty_cart_rate": 0.0, "leak_mb_per_min": 0.0, "label_user_id": False,
+}
+BASE_VERSION = os.getenv("SHOP_BASE_VERSION") or next(
+    (kv.split("=", 1)[1] for kv in os.getenv("OTEL_RESOURCE_ATTRIBUTES", "").split(",") if kv.startswith("service.version=")), "1.0.0"
+)
+chaos: dict = dict(DEFAULTS) | {"version": next((kv.split("=", 1)[1] for kv in os.getenv("OTEL_RESOURCE_ATTRIBUTES", "").split(",") if kv.startswith("service.version=")), BASE_VERSION)}
+
+
+def chaos_active() -> bool:
+    return any(chaos[k] != v for k, v in DEFAULTS.items()) or chaos["version"] != BASE_VERSION
 stats = {"requests": 0, "errors": 0, "started": time.time()}
 latencies: deque[float] = deque(maxlen=500)
 
@@ -107,7 +131,7 @@ async def get_stats() -> dict:
     def pct(p: float) -> float | None:
         return round(lat[min(len(lat) - 1, int(p * len(lat)))], 1) if lat else None
 
-    out = {"service": SERVICE, "chaos": chaos, "requests": stats["requests"], "errors": stats["errors"], "p50_ms": pct(0.5), "p95_ms": pct(0.95)}
+    out = {"service": SERVICE, "chaos": chaos | {"active": chaos_active()}, "requests": stats["requests"], "errors": stats["errors"], "p50_ms": pct(0.5), "p95_ms": pct(0.95), "memory_mb": round(_rss_bytes() / 1e6, 1)}
     if SERVICE == "loadgen":
         out["rps"] = load["rps"]
     return out
@@ -115,12 +139,94 @@ async def get_stats() -> dict:
 
 @app.post("/_chaos")
 async def set_chaos(c: Chaos) -> dict:
-    if c.latency_ms is not None:
-        chaos["latency_ms"] = max(0, min(c.latency_ms, 10_000))
-    if c.error_rate is not None:
-        chaos["error_rate"] = max(0.0, min(c.error_rate, 1.0))
-    log.warning("chaos updated: %s", chaos)
-    return chaos
+    target_version = c.version
+    if c.reset:
+        chaos.update(DEFAULTS)
+        leaked.clear()
+        target_version = BASE_VERSION
+    for key, value in c.model_dump(exclude_none=True, exclude={"reset", "version"}).items():
+        if key in ("latency_ms", "slow_sku_ms"):
+            value = max(0, min(int(value), 10_000))
+        elif key in ("error_rate", "gold_error_rate", "empty_cart_rate"):
+            value = max(0.0, min(float(value), 1.0))
+        elif key == "retries":
+            value = max(0, min(int(value), 5))
+        elif key == "pool_size":
+            value = max(1, min(int(value), 100))
+        elif key == "leak_mb_per_min":
+            value = max(0.0, min(float(value), 500.0))
+        chaos[key] = value
+    log.warning("chaos updated", extra={"app.chaos.active": chaos_active()})
+    if target_version and target_version != chaos["version"]:
+        chaos["version"] = target_version
+        asyncio.get_running_loop().call_later(0.3, _restart, {"version": target_version})
+    return chaos | {"active": chaos_active()}
+
+
+def _restart(state: dict) -> None:
+    """Re-exec this service, as a deploy or an OOM-kill would: new process, new
+    service.instance.id, counters back at zero. Faults survive via SHOP_STATE."""
+    import json
+
+    attrs = [kv for kv in os.getenv("OTEL_RESOURCE_ATTRIBUTES", "").split(",") if kv and not kv.startswith("service.version=")]
+    attrs.append(f"service.version={state.get('version', chaos['version'])}")
+    os.environ["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(attrs)
+    os.environ["SHOP_BASE_VERSION"] = BASE_VERSION
+    os.environ["SHOP_STATE"] = json.dumps({k: chaos[k] for k in DEFAULTS})
+    log.warning("restarting", extra={"service.version": state.get("version")})
+    logging.shutdown()
+    os.execv(sys.executable, [sys.executable, "-m", "uvicorn", *sys.argv[1:]])
+
+
+def _load_state() -> None:
+    import json
+
+    raw = os.environ.pop("SHOP_STATE", "")
+    if raw:
+        try:
+            chaos.update({k: v for k, v in json.loads(raw).items() if k in DEFAULTS})
+        except ValueError:
+            pass
+
+
+_load_state()
+
+
+# ------------------------------------------------------------------ process metrics & memory leak
+def _rss_bytes() -> int:
+    try:
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
+        import resource
+
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+
+
+def _observe_memory(_options):
+    yield metrics.Observation(_rss_bytes(), {})
+
+
+meter.create_observable_up_down_counter("process.memory.usage", callbacks=[_observe_memory], unit="By", description="Resident memory of this process")
+leaked: list[bytearray] = []
+OOM_LIMIT_MB = 300
+
+
+async def _leak() -> None:
+    while True:
+        await asyncio.sleep(1)
+        rate = chaos["leak_mb_per_min"]
+        if not rate:
+            continue
+        leaked.append(bytearray(int(rate * 1024 * 1024 / 60)))
+        if _rss_bytes() > OOM_LIMIT_MB * 1024 * 1024:
+            log.error("out of memory: process killed", extra={"process.memory.limit_mb": OOM_LIMIT_MB})
+            _restart({})
+
+
+@app.on_event("startup")
+async def _start_leak() -> None:
+    asyncio.create_task(_leak())
 
 
 # ------------------------------------------------------------------ storefront
@@ -150,6 +256,8 @@ if SERVICE == "storefront":
     @app.post("/api/checkout")
     async def start_checkout(req: CheckoutRequest) -> dict:
         await apply_chaos()
+        if chaos["empty_cart_rate"] and random.random() < chaos["empty_cart_rate"]:
+            req.items = []  # the bug: a bad merge drops the cart, and nothing complains
         span = trace.get_current_span()
         span.set_attribute("app.user.tier", req.tier)
         span.set_attribute("app.cart.items", sum(i.qty for i in req.items))
@@ -160,7 +268,10 @@ if SERVICE == "storefront":
             checkouts.add(1, {"outcome": "failed", "app.user.tier": req.tier})
             log.error("checkout failed for user %s: HTTP %s", req.user_id, e.response.status_code)
             raise HTTPException(502, "checkout failed")
-        checkouts.add(1, {"outcome": "ok", "app.user.tier": req.tier})
+        attrs = {"outcome": "ok", "app.user.tier": req.tier}
+        if chaos["label_user_id"]:
+            attrs["app.user.id"] = req.user_id  # the cardinality bomb
+        checkouts.add(1, attrs)
         return r.json()
 
 
@@ -172,9 +283,18 @@ if SERVICE == "checkout":
     @app.post("/checkout")
     async def checkout(req: CheckoutRequest) -> dict:
         await apply_chaos()
+        if not req.items:
+            return {"order_id": None, "total": 0}  # nothing to buy: succeed quietly
         order_id = uuid.uuid4().hex[:10]
         span = trace.get_current_span()
         span.set_attribute("app.order.id", order_id)
+        span.set_attribute("app.user.tier", req.tier)
+        if req.tier == "gold" and chaos["gold_error_rate"] and random.random() < chaos["gold_error_rate"]:
+            err = KeyError("discount rule 'gold-2024' not found")
+            span.record_exception(err)
+            span.set_status(Status(StatusCode.ERROR, "pricing failed"))
+            log.error("pricing failed", extra={"app.user.tier": req.tier, "app.order.id": order_id})
+            raise HTTPException(500, "pricing failed")
         with tracer.start_as_current_span("price-order") as price_span:
             prices = {p["sku"]: p["price"] for p in PRODUCTS}
             total = round(sum(prices.get(i.sku, 0) * i.qty for i in req.items), 2)
@@ -188,7 +308,11 @@ if SERVICE == "checkout":
             span.set_status(Status(StatusCode.ERROR, "reservation failed"))
             log.error("order %s: stock reservation failed", order_id)
             raise HTTPException(502, "reservation failed")
-        r = await client.post(f"{URLS['payments']}/charge", json={"order_id": order_id, "amount": total, "user_id": req.user_id})
+        for attempt in range(1 + chaos["retries"]):
+            r = await client.post(f"{URLS['payments']}/charge", json={"order_id": order_id, "amount": total, "user_id": req.user_id})
+            if r.status_code == 200 or r.status_code == 402:
+                break
+            span.add_event("payment.retry", {"app.retry.attempt": attempt + 1})
         if r.status_code != 200:
             log.error("order %s: payment failed", order_id)
             raise HTTPException(502, "payment failed")
@@ -209,14 +333,44 @@ def _observe_stock(_options):
 if SERVICE == "inventory":
     meter.create_observable_gauge("inventory.stock", callbacks=[_observe_stock], unit="{item}", description="Units in stock")
 
-    async def db(statement: str, op: str) -> None:
+    pool_state = {"used": 0, "pending": 0}
+
+    def _observe_pool(_options):
+        size = chaos["pool_size"]
+        attrs = {"db.client.connection.pool.name": "inventory-db"}
+        yield metrics.Observation(pool_state["used"], attrs | {"db.client.connection.state": "used"})
+        yield metrics.Observation(max(0, size - pool_state["used"]), attrs | {"db.client.connection.state": "idle"})
+
+    meter.create_observable_up_down_counter("db.client.connection.count", callbacks=[_observe_pool], unit="{connection}", description="Connections in the pool by state")
+    meter.create_observable_up_down_counter(
+        "db.client.connection.pending_requests", unit="{request}", description="Requests waiting for a connection",
+        callbacks=[lambda _o: [metrics.Observation(pool_state["pending"], {"db.client.connection.pool.name": "inventory-db"})]],
+    )
+    wait_time = meter.create_histogram("db.client.connection.wait_time", unit="s", description="Time spent waiting for a connection",
+                                       explicit_bucket_boundaries_advisory=[0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5])
+
+    async def db(statement: str, op: str, extra_ms: float = 0) -> None:
+        # A connection pool: when every connection is busy, requests queue.
+        t0 = time.perf_counter()
+        pool_state["pending"] += 1
+        while pool_state["used"] >= chaos["pool_size"]:
+            await asyncio.sleep(0.005)
+        pool_state["pending"] -= 1
+        pool_state["used"] += 1
+        wait_time.record(time.perf_counter() - t0, {"db.client.connection.pool.name": "inventory-db"})
+        try:
+            await _query(statement, op, extra_ms)
+        finally:
+            pool_state["used"] -= 1
+
+    async def _query(statement: str, op: str, extra_ms: float) -> None:
         with tracer.start_as_current_span(f"{op} inventory", kind=trace.SpanKind.CLIENT) as span:
             span.set_attribute("db.system.name", "postgresql")
             span.set_attribute("db.namespace", "shop")
             span.set_attribute("db.operation.name", op)
             span.set_attribute("db.query.text", statement)
             span.set_attribute("server.address", "inventory-db")
-            await asyncio.sleep(random.uniform(0.003, 0.015))
+            await asyncio.sleep(random.uniform(0.025, 0.055) + extra_ms / 1000)
 
     @app.get("/stock")
     async def stock() -> dict:
@@ -228,7 +382,8 @@ if SERVICE == "inventory":
     async def reserve(body: dict) -> dict:
         await apply_chaos()
         items = body.get("items", [])
-        await db("UPDATE stock SET qty = qty - $1 WHERE sku = $2", "UPDATE")
+        slow = chaos["slow_sku"] and any(i.get("sku") == chaos["slow_sku"] for i in items)
+        await db("UPDATE stock SET qty = qty - $1 WHERE sku = $2", "UPDATE", extra_ms=chaos["slow_sku_ms"] if slow else 0)
         for i in items:
             sku, qty = i.get("sku"), int(i.get("qty", 1))
             if sku in STOCK:
@@ -244,8 +399,21 @@ class CardDeclined(Exception):
 
 if SERVICE == "payments":
 
-    @app.post("/charge")
+    inflight = {"n": 0}
+
     async def charge(body: dict) -> dict:
+        inflight["n"] += 1
+        try:
+            return await _charge(body)
+        finally:
+            inflight["n"] -= 1
+
+    app.post("/charge")(charge)
+
+    async def _charge(body: dict) -> dict:
+        # Limited capacity: each concurrent request beyond 4 adds latency.
+        if inflight["n"] > 4:
+            await asyncio.sleep((inflight["n"] - 4) * 0.03)
         await apply_chaos()
         span = trace.get_current_span()
         span.set_attribute("app.payment.provider", "stripe-sim")

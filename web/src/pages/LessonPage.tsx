@@ -8,6 +8,7 @@ import { lessonState, progress, useProgress } from "../lib/progress";
 import CodeWorkbench from "../components/CodeWorkbench";
 import QueryWorkbench from "../components/QueryWorkbench";
 import { QuizWorkbench, TaskWorkbench, ToolLinks } from "../components/QuizWorkbench";
+import ActivityPanel from "../components/ActivityPanel";
 import Markdown from "../components/Markdown";
 import TopBar from "../components/TopBar";
 import { Empty, InlineCode, Split, StateIcon } from "../components/ui";
@@ -52,7 +53,7 @@ function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) 
   const p = useProgress();
   const byId = new Map(results.map((r) => [r.id, r]));
   // Quiz questions are their own goals; listing "Question 1..n" again is noise.
-  const items = lesson.kind === "quiz" ? [] : lesson.checks.map((c) => ({ id: c.id, title: c.title }));
+  const items = ["quiz", "experiment", "incident"].includes(lesson.kind) ? [] : lesson.checks.map((c) => ({ id: c.id, title: c.title }));
   const passed = items.filter((i) => byId.get(i.id)?.status === "pass").length;
   const complete = items.length > 0 && passed === items.length;
   if (!items.length) return null;
@@ -126,7 +127,7 @@ export default function LessonPage() {
   }, [id, toast]);
 
   // A lesson is complete when every goal passes (every question, for quizzes).
-  const required = (l0: Lesson) => (l0.kind === "quiz" ? (l0.quiz?.questions ?? []).map((q) => q.id) : l0.checks.map((c) => c.id));
+  const required = (l0: Lesson) => (["quiz", "experiment", "incident"].includes(l0.kind) ? (l0.quiz?.questions ?? []).map((q) => q.id) : l0.checks.map((c) => c.id));
   useEffect(() => {
     const l0 = lesson.data;
     if (!l0) return;
@@ -198,6 +199,7 @@ export default function LessonPage() {
     if (l.kind === "code" || l.kind === "collector") workbench = <CodeWorkbench lesson={l} onChecks={onChecks} />;
     else if (l.kind === "query" && l.query) workbench = <QueryWorkbench lesson={l} onChecks={onChecks} />;
     else if (l.kind === "quiz") workbench = <QuizWorkbench lesson={l} onChecks={onChecks} />;
+    else if (l.kind === "experiment" || l.kind === "incident") workbench = <QuizWorkbench lesson={l} onChecks={onChecks} header={<ActivityPanel lesson={l} />} />;
     else if (l.kind === "task") workbench = <TaskWorkbench lesson={l} onChecks={onChecks} />;
   }
 

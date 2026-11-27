@@ -152,7 +152,7 @@ class Lesson:
         if quiz:  # never leak answers to the client
             quiz = {
                 "questions": [
-                    {k: v for k, v in q.items() if k not in ("answer", "explanation")} | {"id": q.get("id", f"q{i}")}
+                    {k: v for k, v in q.items() if k not in ("answer", "explanation", "reference", "tolerance_s", "expect", "must_include", "hint")} | {"id": q.get("id", f"q{i}")}
                     for i, q in enumerate(quiz.get("questions", []))
                 ]
             }
@@ -170,6 +170,9 @@ class Lesson:
             "tools": m.get("tools", []),
             "scenario": m.get("scenario"),
             "runtime": {k: v for k, v in (m.get("runtime") or {}).items() if k in ("service", "auto_instrument", "timeout")},
+            # What learners may see of an experiment or incident (never the incident's timeline).
+            "experiment": {k: v for k, v in (m.get("experiment") or {}).items() if k != "inject"} or None,
+            "incident": {k: v for k, v in (m.get("incident") or {}).items() if k in ("duration_s", "metrics_only", "brief")} or None,
         }
 
     def checks(self) -> list[dict]:

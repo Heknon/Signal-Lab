@@ -43,7 +43,7 @@ export interface Health {
   tap: Record<string, number>;
 }
 
-export type LessonKind = "code" | "collector" | "query" | "quiz" | "task" | "read";
+export type LessonKind = "code" | "collector" | "query" | "quiz" | "task" | "read" | "experiment" | "incident";
 export interface LessonOutline {
   id: string; slug: string; title: string; summary: string; kind: LessonKind; minutes: number;
   requires: string[]; concepts: string[]; assumes: string[];
@@ -57,7 +57,7 @@ export interface Pack {
 }
 
 export interface LessonFile { filename: string; language: string; content: string }
-export interface QuizQuestion { id: string; prompt: string; options?: { id: string; label: string }[]; multiple?: boolean; input?: "text" }
+export interface QuizQuestion { id: string; prompt: string; options?: { id: string; label: string }[]; multiple?: boolean; input?: "text"; kind?: "time" | "query"; language?: string; backend?: string; placeholder?: string }
 export interface Lesson extends LessonOutline {
   module: string; pack: string; body: string;
   checks: { id: string; title: string; type: string }[];
@@ -69,6 +69,8 @@ export interface Lesson extends LessonOutline {
   scenario?: { chaos?: Record<string, { latency_ms?: number; error_rate?: number }>; load?: number; note?: string };
   runtime: { service?: string; auto_instrument?: boolean; timeout?: number };
   env: Record<string, string>;
+  experiment?: { hypothesis?: string; baseline_s?: number; duration_s?: number; recovery_s?: number; steady_state?: Record<string, unknown> } | null;
+  incident?: { duration_s?: number; metrics_only?: boolean } | null;
 }
 
 export type CheckStatus = "pass" | "fail" | "pending";

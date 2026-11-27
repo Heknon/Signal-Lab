@@ -1,0 +1,9 @@
+# Remaining error budget for a 99% availability SLO over the last hour:
+# 1 - (observed error ratio / allowed error ratio)
+1 - (
+  1 - (
+    sum(increase(http_server_request_duration_seconds_count{service_name="storefront", http_response_status_code!~"5.."}[1h]))
+      /
+    sum(increase(http_server_request_duration_seconds_count{service_name="storefront"}[1h]))
+  )
+) / (1 - 0.99)

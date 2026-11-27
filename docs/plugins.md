@@ -214,6 +214,61 @@ filename: collector.yaml
 collector: {settle_s: 3}
 ```
 
+#### Experiments and incidents
+
+Both run a timed fault timeline on the shared scenario. Only one runs at a
+time; everyone else can watch it. With `SIGNAL_LAB_SCENARIO_CONTROL=admins`,
+only admins can start them, which suits a team game day.
+
+```yaml
+kind: experiment
+experiment:
+  hypothesis: Checkout p95 stays under 1 s when inventory adds 300 ms.
+  steady_state:
+    backend: victoriametrics
+    query: histogram_quantile(0.95, sum by (le) (rate(...{service_name="checkout"}[30s])))
+    label: checkout p95 (s)
+    threshold: 1.0            # hypothesis limit
+    abort_at: 3.0             # remove the fault immediately past this
+    direction: above          # or "below" for ratios where lower is worse
+  baseline_s: 40
+  inject: {inventory: {latency_ms: 300}}
+  load: 12                    # optional traffic during the fault
+  duration_s: 60
+  recovery_s: 40
+```
+
+```yaml
+kind: incident
+incident:
+  duration_s: 900
+  metrics_only: true
+  timeline:
+    - {at: 0, load: 5}
+    - {at: 75, fault: true, set: {payments: {error_rate: 0.35}, checkout: {retries: 3}}}
+```
+
+`set` accepts every fault the scenario supports. The Signal Shop's are
+`latency_ms`, `error_rate`, `slow_sku`/`slow_sku_ms`, `retries`, `pool_size`,
+`gold_error_rate`, `empty_cart_rate`, `leak_mb_per_min`, `label_user_id` and
+`version` (a restart as a new `service.version`).
+
+Questions for these lessons go in `quiz:` and may use three extra kinds:
+
+```yaml
+- {id: outcome, kind: outcome, prompt: Did it hold?, options: [{id: held, ...}, {id: rejected, ...}, {id: aborted, ...}]}
+- {id: start, kind: time, prompt: When did it start?, tolerance_s: 120}   # graded against the real fault start
+- id: evidence
+  kind: query
+  prompt: Write a query that shows it.
+  must_include: [histogram_quantile]
+  expect: {top: {http_route: /reserve}}       # the highest row has this label value
+  # or: expect: {value: {gt: 1.3}}             # the highest value is in range
+```
+
+`scripts/test_incidents.py` applies each incident's faults and checks that a
+known-good evidence query passes during the fault and fails without it.
+
 #### Quizzes
 
 ```yaml

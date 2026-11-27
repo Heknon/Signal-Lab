@@ -1,0 +1,5 @@
+# Availability SLI for the storefront over the last hour: good requests / all requests.
+# Turn it into the share of a 99% SLO's error budget that is still left.
+sum(increase(http_server_request_duration_seconds_count{service_name="storefront", http_response_status_code!~"5.."}[1h]))
+  /
+sum(increase(http_server_request_duration_seconds_count{service_name="storefront"}[1h]))

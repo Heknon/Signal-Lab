@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { BookOpen, Check, ClipboardCheck, Code2, HelpCircle, Search as SearchIcon, Activity, BarChart3, ScrollText } from "lucide-react";
+import { BookOpen, Check, ClipboardCheck, Code2, FlaskConical, HelpCircle, Siren, Search as SearchIcon, Activity, BarChart3, ScrollText } from "lucide-react";
 import type { Backend, Capability, LessonKind } from "../api";
 import type { LessonState } from "../lib/progress";
 
@@ -19,6 +19,8 @@ export function StateIcon({ state, current }: { state: LessonState; current?: bo
 const KIND: Record<LessonKind, { icon: ReactNode; label: string }> = {
   code: { icon: <Code2 />, label: "Code" },
   collector: { icon: <Code2 />, label: "Collector config" },
+  experiment: { icon: <FlaskConical />, label: "Experiment" },
+  incident: { icon: <Siren />, label: "Incident" },
   query: { icon: <SearchIcon />, label: "Query" },
   quiz: { icon: <HelpCircle />, label: "Quiz" },
   task: { icon: <ClipboardCheck />, label: "Hands-on" },
@@ -96,7 +98,11 @@ export function useClickOutside<T extends HTMLElement>(open: boolean, onClose: (
 }
 
 export function InlineCode({ text }: { text: string }) {
-  // Render `backticks` in short strings (check titles, details) as code.
-  const parts = text.split(/(`[^`]+`)/g);
-  return <>{parts.map((p, i) => (p.startsWith("`") && p.endsWith("`") ? <code key={i}>{p.slice(1, -1)}</code> : <span key={i}>{p}</span>))}</>;
+  // Short strings (check titles, quiz prompts): `code`, **bold** and *emphasis*.
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*)/g);
+  return <>{parts.map((p, i) =>
+    p.startsWith("`") && p.endsWith("`") ? <code key={i}>{p.slice(1, -1)}</code>
+    : p.startsWith("**") && p.endsWith("**") ? <strong key={i}>{p.slice(2, -2)}</strong>
+    : p.startsWith("*") && p.endsWith("*") && p.length > 2 ? <em key={i}>{p.slice(1, -1)}</em>
+    : <span key={i}>{p}</span>)}</>;
 }

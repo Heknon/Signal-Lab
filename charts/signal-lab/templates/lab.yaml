@@ -104,6 +104,8 @@ spec:
               value: {{ $l.runs.timeout | toString | quote }}
             - name: SIGNAL_LAB_OTLP_ENDPOINT
               value: {{ printf "http://%s:4318" $collector | quote }}
+            - name: SIGNAL_LAB_TAP_URL
+              value: {{ printf "%s/tap" (include "signal-lab.svcUrl" (dict "ctx" $ "component" "lab" "port" $l.service.port)) | quote }}
             - name: SIGNAL_LAB_COLLECTOR_HEALTH_URL
               value: {{ printf "http://%s:13133/" $collector | quote }}
             - name: SIGNAL_LAB_COLLECTOR_CONFIGS

@@ -29,6 +29,14 @@ spec:
           protocol: TCP
         - port: 4318
           protocol: TCP
+    # Hands-on Collector lessons: the runner's sandbox Collector exports to the lab's tap.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "lab") | nindent 14 }}
+      ports:
+        - port: 8000
+          protocol: TCP
     {{- if .Values.scenario.enabled }}
     - to:
         - podSelector:
