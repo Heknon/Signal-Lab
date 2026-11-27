@@ -91,7 +91,8 @@ class Adapter(BackendAdapter):
 
     def link(self, kind: str, params: dict) -> str | None:
         if kind in ("metric", "query"):
-            expr = params.get("expr") or prom_name(params.get("name", ""))
+            # OTLP names gain unit and _total suffixes on the way in, so match by prefix.
+            expr = params.get("expr") or f'{{__name__=~"{prom_name(params.get("name", ""))}.*"}}'
             panes = {"sl": {"datasource": self.settings["grafana_datasource_uid"], "queries": [{"refId": "A", "expr": expr, "datasource": {"type": "prometheus", "uid": self.settings["grafana_datasource_uid"]}}], "range": {"from": "now-15m", "to": "now"}}}
             return f"{self.settings['grafana_public_url'].rstrip('/')}/explore?schemaVersion=1&orgId=1&panes={quote(json.dumps(panes, separators=(',', ':')))}"
         return super().link(kind, params)

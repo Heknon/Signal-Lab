@@ -140,20 +140,22 @@ async def execute_remote(url: str, code: str, env: dict[str, str], *, timeout: f
             yield {"type": "exit", "code": -1, "duration_ms": 0}
 
 
+from pydantic import BaseModel
+
+
+class ExecRequest(BaseModel):
+    code: str
+    env: dict[str, str] = {}
+    timeout: float = 20
+    auto_instrument: bool = True
+
+
 def create_runner_app():
     """Stand-alone runner service: ``python -m signal_lab runner``."""
     from fastapi import FastAPI
     from fastapi.responses import StreamingResponse
-    from pydantic import BaseModel
 
     app = FastAPI(title="Signal Lab runner")
-
-    class ExecRequest(BaseModel):
-        code: str
-        env: dict[str, str] = {}
-        timeout: float = 20
-        auto_instrument: bool = True
-
     max_timeout = float(os.getenv("SIGNAL_LAB_RUN_TIMEOUT", "30"))
     semaphore = asyncio.Semaphore(int(os.getenv("SIGNAL_LAB_RUNNER_CONCURRENCY", "4")))
 
