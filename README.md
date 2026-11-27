@@ -31,7 +31,10 @@ you do the work and shows the result immediately:
 
 ## Quick start
 
-You need Docker with Compose v2 and about 2 GB of memory for Docker.
+You need Docker with Compose v2 (or Podman with `podman compose`) and about
+2 GB of memory for the containers. `./lab` uses Docker when it is installed and
+Podman otherwise; set `SIGNAL_LAB_ENGINE=podman` to choose Podman explicitly. On
+Windows, run `./lab` from Git Bash.
 
 ```bash
 git clone https://github.com/heknon/signal-lab && cd signal-lab

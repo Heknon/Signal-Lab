@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# Signal Lab helper. Wraps docker compose and manages which backend plugins run.
+# Signal Lab helper. Wraps docker compose (or podman compose) and manages which
+# backend plugins run.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# Docker if it's installed, otherwise Podman. Force one with SIGNAL_LAB_ENGINE=podman.
+if [ -n "${SIGNAL_LAB_ENGINE:-}" ]; then engine=$SIGNAL_LAB_ENGINE
+elif command -v docker >/dev/null 2>&1; then engine=docker
+elif command -v podman >/dev/null 2>&1; then engine=podman
+else engine=docker; fi
+compose() { "$engine" compose "$@"; }
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 available() { for d in plugins/backends/*/; do [ -f "$d/plugin.yaml" ] && basename "$d"; done; }
@@ -17,8 +25,9 @@ use() {
     ids="${ids:+$ids,}$b"
   done
   local tmp; tmp=$(mktemp)
-  grep -vE '^(SIGNAL_LAB_BACKENDS|COMPOSE_FILE|COLLECTOR_CONFIGS)=' .env 2>/dev/null > "$tmp" || true
-  { echo "SIGNAL_LAB_BACKENDS=$ids"; echo "COMPOSE_FILE=$files"; echo "COLLECTOR_CONFIGS=$configs"; } >> "$tmp"
+  grep -vE '^(SIGNAL_LAB_BACKENDS|COMPOSE_PATH_SEPARATOR|COMPOSE_FILE|COLLECTOR_CONFIGS)=' .env 2>/dev/null > "$tmp" || true
+  # COMPOSE_FILE uses ':' everywhere; Compose on Windows defaults to ';'.
+  { echo "SIGNAL_LAB_BACKENDS=$ids"; echo "COMPOSE_PATH_SEPARATOR=:"; echo "COMPOSE_FILE=$files"; echo "COLLECTOR_CONFIGS=$configs"; } >> "$tmp"
   mv "$tmp" .env
   bold "Backends: $*"
   echo "Run ./lab up to apply."
@@ -29,20 +38,20 @@ open_url() { command -v xdg-open >/dev/null && xdg-open "$1" >/dev/null 2>&1 || 
 case "${1:-help}" in
   up)
     shift
-    docker compose up -d --build --remove-orphans "$@"
+    compose up -d --build --remove-orphans "$@"
     bold "Signal Lab is starting: http://localhost:${SIGNAL_LAB_PORT:-8000}"
     echo "Backends: $(current)   ·   ./lab status to check health"
     ;;
-  down) shift; docker compose down --remove-orphans "$@" ;;
-  reset) docker compose down -v --remove-orphans ;;
+  down) shift; compose down --remove-orphans "$@" ;;
+  reset) compose down -v --remove-orphans ;;
   use) shift; use "$@" ;;
   backends)
     for b in $(available); do
       mark=" "; for c in $(current); do [ "$c" = "$b" ] && mark="●"; done
       printf ' %s %-16s %s\n' "$mark" "$b" "$(grep -m1 '^title:' "plugins/backends/$b/plugin.yaml" | cut -d: -f2- | xargs)"
     done ;;
-  status) docker compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ;;
-  logs) shift; docker compose logs -f --tail=100 "$@" ;;
+  status) compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ;;
+  logs) shift; compose logs -f --tail=100 "$@" ;;
   open) open_url "http://localhost:${SIGNAL_LAB_PORT:-8000}" ;;
   dev) exec scripts/dev.sh ;;
   *)
