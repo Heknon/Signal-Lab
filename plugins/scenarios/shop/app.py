@@ -75,7 +75,12 @@ async def apply_chaos() -> None:
             span.set_attribute("chaos.latency_ms", chaos["latency_ms"])
             await asyncio.sleep(chaos["latency_ms"] * jitter / 1000)
     if chaos["error_rate"] and random.random() < chaos["error_rate"]:
-        raise HTTPException(503, f"{SERVICE} is having a bad day (injected fault)")
+        err = RuntimeError(f"{SERVICE} is having a bad day (injected fault)")
+        span = trace.get_current_span()
+        span.record_exception(err)
+        span.set_status(Status(StatusCode.ERROR, str(err)))
+        log.error("injected fault", extra={"app.chaos.error_rate": chaos["error_rate"]})
+        raise HTTPException(503, str(err))
 
 
 @app.middleware("http")

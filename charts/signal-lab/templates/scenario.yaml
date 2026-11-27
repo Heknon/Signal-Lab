@@ -52,6 +52,8 @@ spec:
               value: {{ printf "http://%s:4318" $collector | quote }}
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: http/protobuf
+            - name: OTEL_LOGS_EXPORTER
+              value: otlp
             - name: OTEL_METRIC_EXPORT_INTERVAL
               value: {{ $s.otel.metricExportInterval | toString | quote }}
             - name: OTEL_SEMCONV_STABILITY_OPT_IN
