@@ -1,0 +1,11 @@
+# Loads every dashboard JSON in this directory (mounted read-only by compose).
+apiVersion: 1
+providers:
+  - name: signal-lab
+    folder: Signal Lab
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

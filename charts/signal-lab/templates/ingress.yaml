@@ -1,0 +1,40 @@
+{{- if .Values.ingress.enabled }}
+{{- $ing := .Values.ingress }}
+{{- $rules := list (dict "host" $ing.hosts.lab "component" "lab" "port" .Values.lab.service.port) }}
+{{- if and $ing.hosts.grafana (include "signal-lab.grafanaBundled" .) }}
+{{- $rules = append $rules (dict "host" $ing.hosts.grafana "component" "grafana" "port" 3000) }}
+{{- end }}
+{{- if and $ing.hosts.jaeger (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) }}
+{{- $rules = append $rules (dict "host" $ing.hosts.jaeger "component" "jaeger" "port" 16686) }}
+{{- end }}
+{{- if and $ing.hosts.kibana (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic")) }}
+{{- $rules = append $rules (dict "host" $ing.hosts.kibana "component" "kibana" "port" 5601) }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "ingress" "name" (include "signal-lab.fullname" .) "annotations" $ing.annotations) | nindent 2 }}
+spec:
+  {{- with $ing.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with $ing.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $rules }}
+    - {{- with .host }}
+      host: {{ . | quote }}
+      {{- end }}
+      http:
+        paths:
+          - path: /
+            pathType: {{ $ing.pathType }}
+            backend:
+              service:
+                name: {{ include "signal-lab.componentName" (dict "ctx" $ "component" .component) }}
+                port:
+                  number: {{ .port }}
+    {{- end }}
+{{- end }}

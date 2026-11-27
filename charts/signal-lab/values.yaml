@@ -1,0 +1,704 @@
+# Default values for the signal-lab chart.
+#
+# Layout:
+#   global / naming / image ........ shared settings
+#   lab ............................ UI + API (the only component meant to be exposed)
+#   runner ......................... sandbox that executes learner code (never exposed)
+#   collector ...................... OpenTelemetry Collector every signal flows through
+#   scenario ....................... Signal Shop demo services
+#   backends ....................... victoriametrics (+ Grafana), jaeger, elastic
+#   ingress ........................ one Ingress for the lab and backend UIs
+#
+# Comments starting with "# --" are picked up by helm-docs.
+
+global:
+  # -- Registry prefix for every image in the chart (lab, collector and bundled backends).
+  # Overrides each image's own `registry`. Useful with a pull-through mirror.
+  imageRegistry: ""
+  # -- Pull secrets added to every pod, e.g. `[{name: regcred}]`.
+  imagePullSecrets: []
+
+# -- Override the chart name used in resource names.
+nameOverride: ""
+# -- Override the full resource name prefix (defaults to `<release>-<chart>`).
+fullnameOverride: ""
+# -- Labels added to every resource the chart creates.
+commonLabels: {}
+# -- Annotations added to every resource the chart creates.
+commonAnnotations: {}
+
+# The Signal Lab image. One image serves three roles: the lab API (`api`),
+# the runner (`runner`) and the shop scenario services.
+image:
+  # -- Image registry. Ignored when `global.imageRegistry` is set.
+  registry: ghcr.io
+  # -- Image repository.
+  repository: heknon/signal-lab
+  # -- Image tag. Defaults to the chart's `appVersion`.
+  tag: ""
+  # -- Image digest (`sha256:...`). When set it is used instead of the tag.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets for the pods of this release (merged with `global.imagePullSecrets`).
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Create a ServiceAccount shared by the chart's pods.
+  create: true
+  # -- ServiceAccount name. Defaults to the full name when `create` is true, `default` otherwise.
+  name: ""
+  # -- Annotations for the ServiceAccount (e.g. for workload identity).
+  annotations: {}
+  # -- Mount the ServiceAccount token into pods. Nothing in Signal Lab talks to the
+  # Kubernetes API, so this is off. The runner never mounts a token, whatever this says.
+  automount: false
+
+# -- Pod security context for the pods that run the Signal Lab image (lab, scenario).
+# The runner has its own, stricter settings under `runner`.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context for the containers that run the Signal Lab image (lab, scenario).
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  capabilities:
+    drop: [ALL]
+
+# ---------------------------------------------------------------------------
+# Lab: UI and API
+# ---------------------------------------------------------------------------
+lab:
+  # -- Number of lab replicas. The live telemetry inspector keeps state in memory,
+  # so keep this at 1 unless you add session affinity.
+  replicaCount: 1
+  # -- Value of `deployment.environment.name` stamped on learner runs (`SIGNAL_LAB_ENVIRONMENT`).
+  environment: lab
+  # -- Log level of the lab server (`SIGNAL_LAB_LOG_LEVEL`).
+  logLevel: INFO
+  # -- Lesson packs to load (`SIGNAL_LAB_LESSON_PACKS`). Empty loads every pack in the image.
+  lessonPacks: []
+  runs:
+    # -- Allow learners to run code (`SIGNAL_LAB_RUNS_ENABLED`). Set false for a read-only course.
+    enabled: true
+    # -- Default timeout for a learner run, in seconds (`SIGNAL_LAB_RUN_TIMEOUT`).
+    # Capped by `runner.maxTimeout`.
+    timeout: 20
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service port.
+    port: 8000
+    # -- Service annotations.
+    annotations: {}
+  # -- Resource requests and limits.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  # -- Extra environment variables (list of EnvVar objects).
+  extraEnv: []
+  # -- Extra volumes for the lab pod.
+  extraVolumes: []
+  # -- Extra volume mounts for the lab container.
+  extraVolumeMounts: []
+  # -- Annotations for the lab pods.
+  podAnnotations: {}
+  # -- Labels for the lab pods.
+  podLabels: {}
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity rules.
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Runner: executes untrusted learner code. ClusterIP only, never exposed.
+# ---------------------------------------------------------------------------
+runner:
+  # -- Number of runner replicas. Each handles `concurrency` runs at a time.
+  replicaCount: 1
+  # -- Hard cap on a single run, in seconds (`SIGNAL_LAB_RUN_TIMEOUT` on the runner).
+  maxTimeout: 30
+  # -- Runs executed in parallel per replica (`SIGNAL_LAB_RUNNER_CONCURRENCY`).
+  concurrency: 4
+  service:
+    # -- Service port.
+    port: 8001
+    # -- Service annotations.
+    annotations: {}
+  # -- Resource requests and limits. Keep limits: this pod runs arbitrary code.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1500m
+      memory: 1Gi
+  # -- Size limit of the writable `/tmp` emptyDir where runs get their scratch directory.
+  tmpSizeLimit: 256Mi
+  # -- Pod security context. Tighten further if you like; do not loosen.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    privileged: false
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
+  networkPolicy:
+    # -- Create a NetworkPolicy that limits the runner to: ingress from lab pods only;
+    # egress to the Collector (4317/4318), the shop services (8080) and DNS.
+    # Requires a CNI that enforces NetworkPolicy.
+    enabled: true
+    # -- Peers allowed for DNS (port 53). Defaults to CoreDNS/kube-dns in any namespace.
+    # Set to `[]` to allow port 53 to any destination (e.g. with NodeLocal DNSCache).
+    dnsTo:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    # -- Extra egress rules (NetworkPolicyEgressRule objects), e.g. to let lessons reach a backend.
+    extraEgress: []
+  # -- Extra environment variables (list of EnvVar objects).
+  extraEnv: []
+  # -- Annotations for the runner pods.
+  podAnnotations: {}
+  # -- Labels for the runner pods.
+  podLabels: {}
+  # -- Node selector. Consider a dedicated, tainted node pool for untrusted code.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity rules.
+  affinity: {}
+  # -- RuntimeClass for the runner (e.g. `gvisor` or `kata`) for stronger isolation.
+  runtimeClassName: ""
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry Collector
+# ---------------------------------------------------------------------------
+collector:
+  image:
+    # -- Image registry. Ignored when `global.imageRegistry` is set.
+    registry: docker.io
+    # -- Image repository.
+    repository: otel/opentelemetry-collector-contrib
+    # -- Image tag.
+    tag: 0.115.1
+    # -- Image digest. When set it is used instead of the tag.
+    digest: ""
+    # -- Image pull policy.
+    pullPolicy: IfNotPresent
+  # -- Number of Collector replicas.
+  replicaCount: 1
+  service:
+    # -- Service type.
+    type: ClusterIP
+    # -- Service annotations.
+    annotations: {}
+  # -- Extra Collector config, merged on top of the shipped files as one more `--config`.
+  # Use it to add exporters/pipelines or tweak the shipped ones (e.g. TLS for an external backend).
+  # @default -- `{}`
+  extraConfig: {}
+  #  exporters:
+  #    otlp/elastic:
+  #      tls:
+  #        insecure: false
+  # -- Extra environment variables (list of EnvVar objects). Handy for `${env:...}` in `extraConfig`.
+  extraEnv: []
+  # -- Resource requests and limits. `memory_limiter` uses 80% of the memory limit.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Pod security context.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  # -- Annotations for the Collector pods.
+  podAnnotations: {}
+  # -- Labels for the Collector pods.
+  podLabels: {}
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity rules.
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Scenario: the Signal Shop (auto-instrumented demo services)
+# ---------------------------------------------------------------------------
+scenario:
+  # -- Deploy the Signal Shop scenario.
+  enabled: true
+  # -- One Deployment and Service per entry. `name` is the shop service id; each entry
+  # may also set `replicaCount`, `resources` and `extraEnv`.
+  services:
+    - name: storefront
+    - name: checkout
+    - name: inventory
+    - name: payments
+    - name: loadgen
+  loadgen:
+    # -- Requests per second the load generator sends to the storefront (`SHOP_LOADGEN_RPS`).
+    rps: 2
+  otel:
+    # -- `OTEL_RESOURCE_ATTRIBUTES` for every shop service.
+    resourceAttributes: deployment.environment.name=lab,service.version=1.4.2
+    # -- Metric export interval in milliseconds (`OTEL_METRIC_EXPORT_INTERVAL`).
+    metricExportInterval: 5000
+  # -- Default replicas per shop service.
+  replicaCount: 1
+  # -- Default resources per shop service.
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # -- Extra environment variables for every shop service (list of EnvVar objects).
+  extraEnv: []
+  # -- Annotations for the shop pods.
+  podAnnotations: {}
+  # -- Labels for the shop pods.
+  podLabels: {}
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity rules.
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Backends. Each one is either `bundled` (deployed by this chart, sized for a
+# lab) or `external` (you point the lab and the Collector at your own).
+# ---------------------------------------------------------------------------
+backends:
+  # VictoriaMetrics (metrics) + Grafana (Explore, dashboards, alerting).
+  victoriametrics:
+    # -- Enable the VictoriaMetrics + Grafana backend.
+    enabled: true
+    # -- `bundled` deploys VictoriaMetrics (and Grafana); `external` uses `external.*` URLs.
+    mode: bundled
+    image:
+      # -- Image registry.
+      registry: docker.io
+      # -- Image repository.
+      repository: victoriametrics/victoria-metrics
+      # -- Image tag.
+      tag: v1.106.1
+      # -- Image digest.
+      digest: ""
+      # -- Image pull policy.
+      pullPolicy: IfNotPresent
+    # -- How long VictoriaMetrics keeps data (`-retentionPeriod`).
+    retentionPeriod: 7d
+    # -- Extra command-line flags, e.g. `["-memory.allowedPercent=40"]`.
+    extraArgs: []
+    # -- Browser URL of VictoriaMetrics (VMUI links). Defaults to `http://localhost:8428`
+    # (reach it with `kubectl port-forward`); VictoriaMetrics is never put on the Ingress.
+    publicUrl: ""
+    persistence:
+      # -- Store data on a PersistentVolumeClaim. When false, an emptyDir is used.
+      enabled: true
+      # -- StorageClass. `""` uses the cluster default; `"-"` disables dynamic provisioning.
+      storageClass: ""
+      # -- Access modes.
+      accessModes: [ReadWriteOnce]
+      # -- Volume size.
+      size: 10Gi
+    # -- Resource requests and limits.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # -- Pod security context.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+      fsGroup: 65534
+      seccompProfile:
+        type: RuntimeDefault
+    # -- Container security context.
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    # -- Node selector.
+    nodeSelector: {}
+    # -- Tolerations.
+    tolerations: []
+    # -- Affinity rules.
+    affinity: {}
+
+    grafana:
+      # -- Deploy Grafana with a provisioned VictoriaMetrics datasource (bundled mode only).
+      enabled: true
+      image:
+        # -- Image registry.
+        registry: docker.io
+        # -- Image repository.
+        repository: grafana/grafana
+        # -- Image tag.
+        tag: 11.4.0
+        # -- Image digest.
+        digest: ""
+        # -- Image pull policy.
+        pullPolicy: IfNotPresent
+      # -- Anonymous users are Grafana admins and the login form is hidden, as in the compose stack.
+      # Convenient for a personal lab; turn off for anything shared.
+      anonymousAdmin: true
+      # -- Extra `GF_*` settings as a map, e.g. `{GF_SERVER_ROOT_URL: https://grafana.example.com}`.
+      env: {}
+      # -- Browser URL of Grafana. Defaults to the `ingress.hosts.grafana` host, else `http://localhost:3000`.
+      publicUrl: ""
+      # -- Resource requests and limits.
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      # -- Pod security context.
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container security context.
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      # -- Node selector.
+      nodeSelector: {}
+      # -- Tolerations.
+      tolerations: []
+      # -- Affinity rules.
+      affinity: {}
+
+    external:
+      # -- In-cluster URL of your VictoriaMetrics (or any Prometheus-API store), for queries.
+      url: ""
+      # -- OTLP metrics ingest URL. Defaults to `<url>/opentelemetry/v1/metrics`.
+      otlpUrl: ""
+      # -- Browser URL of VictoriaMetrics. Defaults to `url`.
+      publicUrl: ""
+      # -- In-cluster URL of your Grafana (also used in bundled mode when `grafana.enabled` is false).
+      grafanaUrl: ""
+      # -- Browser URL of your Grafana. Defaults to `grafanaUrl`.
+      grafanaPublicUrl: ""
+      # -- UID of the Grafana datasource that points at VictoriaMetrics.
+      grafanaDatasourceUid: victoriametrics
+      grafanaToken:
+        # -- Existing Secret holding a Grafana service-account token (`GRAFANA_TOKEN`).
+        existingSecret: ""
+        # -- Key in that Secret.
+        key: token
+
+  # Jaeger (traces). Lightweight, in-memory storage when bundled.
+  jaeger:
+    # -- Enable the Jaeger backend.
+    enabled: true
+    # -- `bundled` deploys Jaeger all-in-one with in-memory storage; `external` uses `external.*`.
+    mode: bundled
+    image:
+      # -- Image registry.
+      registry: docker.io
+      # -- Image repository.
+      repository: jaegertracing/jaeger
+      # -- Image tag.
+      tag: 2.1.0
+      # -- Image digest.
+      digest: ""
+      # -- Image pull policy.
+      pullPolicy: IfNotPresent
+    # -- Browser URL of the Jaeger UI. Defaults to the `ingress.hosts.jaeger` host, else `http://localhost:16686`.
+    publicUrl: ""
+    # -- Resource requests and limits. Traces are kept in memory, so the limit caps retention.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # -- Pod security context.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      seccompProfile:
+        type: RuntimeDefault
+    # -- Container security context.
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    # -- Node selector.
+    nodeSelector: {}
+    # -- Tolerations.
+    tolerations: []
+    # -- Affinity rules.
+    affinity: {}
+    external:
+      # -- In-cluster URL of the Jaeger query service (e.g. `http://jaeger-query.tracing:16686`).
+      url: ""
+      # -- Browser URL of the Jaeger UI. Defaults to `url`.
+      publicUrl: ""
+      # -- OTLP/gRPC endpoint the Collector exports traces to, as `host:port`.
+      otlpEndpoint: ""
+
+  # Elastic Observability (Elasticsearch, Kibana, APM Server): traces, metrics and logs.
+  # Off by default: the bundled stack wants roughly 3 GiB of memory.
+  elastic:
+    # -- Enable the Elastic backend.
+    enabled: false
+    # -- `bundled` deploys a single-node stack; `external` uses `external.*`.
+    # WARNING: the bundled stack runs with security DISABLED (no TLS, no auth).
+    # It is for a personal lab only. Never expose it outside the cluster.
+    mode: bundled
+    # -- Elastic stack version, used as the tag for all three images unless they set their own.
+    version: 8.17.4
+
+    elasticsearch:
+      image:
+        # -- Image registry.
+        registry: docker.elastic.co
+        # -- Image repository.
+        repository: elasticsearch/elasticsearch
+        # -- Image tag. Defaults to `backends.elastic.version`.
+        tag: ""
+        # -- Image digest.
+        digest: ""
+        # -- Image pull policy.
+        pullPolicy: IfNotPresent
+      # -- JVM heap (`ES_JAVA_OPTS`). Keep it at about half of the memory limit.
+      heap: -Xms1g -Xmx1g
+      # -- Extra environment variables (list of EnvVar objects); dotted names set Elasticsearch settings.
+      extraEnv: []
+      persistence:
+        # -- Store data on a PersistentVolumeClaim. When false, an emptyDir is used.
+        enabled: true
+        # -- StorageClass. `""` uses the cluster default; `"-"` disables dynamic provisioning.
+        storageClass: ""
+        # -- Access modes.
+        accessModes: [ReadWriteOnce]
+        # -- Volume size.
+        size: 20Gi
+      # -- Resource requests and limits.
+      resources:
+        requests:
+          cpu: 500m
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      # -- Pod security context.
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container security context.
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      # -- Node selector.
+      nodeSelector: {}
+      # -- Tolerations.
+      tolerations: []
+      # -- Affinity rules.
+      affinity: {}
+
+    kibana:
+      image:
+        # -- Image registry.
+        registry: docker.elastic.co
+        # -- Image repository.
+        repository: kibana/kibana
+        # -- Image tag. Defaults to `backends.elastic.version`.
+        tag: ""
+        # -- Image digest.
+        digest: ""
+        # -- Image pull policy.
+        pullPolicy: IfNotPresent
+      # -- Browser URL of Kibana (`SERVER_PUBLICBASEURL`, `KIBANA_PUBLIC_URL`).
+      # Defaults to the `ingress.hosts.kibana` host, else `http://localhost:5601`.
+      publicUrl: ""
+      # -- Saved-objects encryption key (32+ characters). Generated once and kept across upgrades when empty.
+      encryptionKey: ""
+      # -- Existing Secret with the key under `encryptionKey`; overrides `encryptionKey`.
+      existingSecret: ""
+      # -- Resource requests and limits.
+      resources:
+        requests:
+          cpu: 200m
+          memory: 768Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+      # -- Pod security context.
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container security context.
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      # -- Node selector.
+      nodeSelector: {}
+      # -- Tolerations.
+      tolerations: []
+      # -- Affinity rules.
+      affinity: {}
+
+    apmServer:
+      image:
+        # -- Image registry.
+        registry: docker.elastic.co
+        # -- Image repository.
+        repository: apm/apm-server
+        # -- Image tag. Defaults to `backends.elastic.version`.
+        tag: ""
+        # -- Image digest.
+        digest: ""
+        # -- Image pull policy.
+        pullPolicy: IfNotPresent
+      # -- Resource requests and limits.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      # -- Pod security context.
+      podSecurityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # -- Container security context.
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      # -- Node selector.
+      nodeSelector: {}
+      # -- Tolerations.
+      tolerations: []
+      # -- Affinity rules.
+      affinity: {}
+
+    external:
+      # -- URL of your Elasticsearch, e.g. `https://my-deployment.es.example.com:443`.
+      elasticsearchUrl: ""
+      # -- In-cluster URL of your Kibana.
+      kibanaUrl: ""
+      # -- Browser URL of your Kibana. Defaults to `kibanaUrl`.
+      kibanaPublicUrl: ""
+      # -- URL of your APM Server (or Elastic managed OTLP intake).
+      apmServerUrl: ""
+      # -- OTLP/gRPC endpoint the Collector exports to, as `host:port`. Defaults to the host:port of `apmServerUrl`.
+      # The shipped exporter uses plaintext gRPC; set TLS through `collector.extraConfig` for a TLS endpoint.
+      apmOtlpEndpoint: ""
+      apiKey:
+        # -- Existing Secret with an Elasticsearch API key the lab uses for queries (`ELASTICSEARCH_API_KEY`).
+        existingSecret: ""
+        # -- Key in that Secret.
+        key: api-key
+      apmAuthHeader:
+        # -- Existing Secret with the full `Authorization` header value the Collector sends to APM,
+        # e.g. `ApiKey <base64>` or `Bearer <secret-token>` (`ELASTIC_APM_AUTH_HEADER`).
+        existingSecret: ""
+        # -- Key in that Secret.
+        key: authorization
+
+# ---------------------------------------------------------------------------
+# Ingress: one resource with a host per UI.
+# ---------------------------------------------------------------------------
+ingress:
+  # -- Create an Ingress.
+  enabled: false
+  # -- IngressClass name (e.g. `nginx`, `traefik`).
+  className: ""
+  # -- Ingress annotations. The lab streams run output and live telemetry (SSE/NDJSON):
+  # disable proxy buffering, e.g. `nginx.ingress.kubernetes.io/proxy-buffering: "off"`.
+  annotations: {}
+  # -- Path type for every rule.
+  pathType: Prefix
+  hosts:
+    # -- Host of the lab UI. Empty creates a rule that matches any host.
+    lab: signal-lab.local
+    # -- Host of Grafana (bundled VictoriaMetrics backend). Empty leaves Grafana off the Ingress.
+    grafana: ""
+    # -- Host of the Jaeger UI (bundled Jaeger). Empty leaves Jaeger off the Ingress.
+    jaeger: ""
+    # -- Host of Kibana (bundled Elastic). Empty leaves Kibana off the Ingress.
+    # The bundled Elastic stack has no authentication: only expose it on a trusted network.
+    kibana: ""
+  # -- TLS blocks, e.g. `[{secretName: signal-lab-tls, hosts: [signal-lab.example.com]}]`.
+  # Public URLs switch to https for hosts listed here.
+  tls: []

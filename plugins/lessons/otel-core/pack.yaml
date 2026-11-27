@@ -2,12 +2,43 @@ id: otel-core
 title: OpenTelemetry Foundations
 description: >
   Traces, metrics and logs from first principles, written with the real
-  OpenTelemetry Python SDK. Works with any backend.
+  OpenTelemetry Python SDK. Backend-neutral: every lesson works with whichever
+  backends you enable. Modules stand alone, so skip what you already know.
 order: 10
 icon: radio
 modules:
+  - id: orientation
+    title: Orientation
+    description: The moving parts (API, SDK, OTLP, Collector, backends) and how a signal travels.
+    assumes: []
+    lessons: [how-it-fits]
   - id: traces
     title: Traces
     description: Spans, their shape, and how they describe a request.
     assumes: [Basic Python]
-    lessons: [first-span, nested-spans]
+    lessons: [first-span, nested-spans, attributes-events, errors-status, semantic-conventions, span-links, auto-instrumentation]
+  - id: context
+    title: Context propagation
+    description: How one trace crosses process boundaries over HTTP and queues, and what baggage is for.
+    assumes: [Creating spans]
+    lessons: [propagation-http, messaging-propagation, baggage]
+  - id: metrics
+    title: Metrics
+    description: Instruments, attributes, histograms, and the cost of cardinality.
+    assumes: [Basic Python]
+    lessons: [counters, histograms, gauges, cardinality]
+  - id: logs
+    title: Logs
+    description: Structured logs that you can query, and logs that link back to traces.
+    assumes: [Python logging]
+    lessons: [structured-logs, log-correlation]
+  - id: sdk
+    title: SDK & sampling
+    description: Configure the SDK yourself, choose what to keep with samplers, and reshape metrics with views.
+    assumes: [Creating spans, Creating metrics]
+    lessons: [manual-setup, sampling, views]
+  - id: collector
+    title: The Collector
+    description: Receivers, processors, exporters and pipelines, using this lab's own Collector as the example.
+    assumes: [What OTLP is]
+    lessons: [collector-pipelines]

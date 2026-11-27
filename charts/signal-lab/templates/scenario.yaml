@@ -1,0 +1,118 @@
+{{- if .Values.scenario.enabled }}
+{{- $s := .Values.scenario }}
+{{- $collector := include "signal-lab.componentName" (dict "ctx" $ "component" "collector") }}
+{{- range $svc := $s.services }}
+{{- $name := $svc.name }}
+{{- $selector := dict "signal-lab.io/shop-service" $name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "scenario" "name" (include "signal-lab.componentName" (dict "ctx" $ "component" $name)) "extraLabels" $selector) | nindent 2 }}
+spec:
+  replicas: {{ $svc.replicaCount | default $s.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "scenario") | nindent 6 }}
+      {{- toYaml $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "scenario") | nindent 8 }}
+        {{- toYaml $selector | nindent 8 }}
+        {{- with $s.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $s.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" $ }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" $ }}
+      automountServiceAccountToken: {{ $.Values.serviceAccount.automount }}
+      enableServiceLinks: false
+      {{- with $.Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "signal-lab.image" (dict "image" $.Values.image "global" $.Values.global "defaultTag" $.Chart.AppVersion) | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          workingDir: /app/plugins/scenarios/shop
+          command: ["opentelemetry-instrument"]
+          args: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
+          env:
+            - name: SHOP_SERVICE
+              value: {{ $name | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ $name | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ printf "http://%s:4318" $collector | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: {{ $s.otel.metricExportInterval | toString | quote }}
+            - name: OTEL_SEMCONV_STABILITY_OPT_IN
+              value: http
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ $s.otel.resourceAttributes | quote }}
+            {{- with include "signal-lab.shopUrlEnv" $ }}{{- . | trim | nindent 12 }}{{- end }}
+            {{- if eq $name "loadgen" }}
+            - name: SHOP_LOADGEN_RPS
+              value: {{ $s.loadgen.rps | toString | quote }}
+            {{- end }}
+            {{- with $s.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- with ($svc.resources | default $s.resources) }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with include "signal-lab.scheduling" $s }}{{- . | trim | nindent 6 }}{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "scenario" "name" (include "signal-lab.componentName" (dict "ctx" $ "component" $name)) "extraLabels" $selector) | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "scenario") | nindent 4 }}
+    {{- toYaml $selector | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+{{- end }}
+{{- end }}

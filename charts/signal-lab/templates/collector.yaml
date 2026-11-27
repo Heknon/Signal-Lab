@@ -1,0 +1,106 @@
+{{- $c := .Values.collector }}
+{{- $confDir := include "signal-lab.collectorConfDir" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "collector") | nindent 2 }}
+spec:
+  replicas: {{ $c.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "collector") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "collector") | nindent 8 }}
+        {{- with $c.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/collector-configmap.yaml") . | sha256sum }}
+        {{- with $c.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with $c.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: collector
+          image: {{ include "signal-lab.image" (dict "image" $c.image "global" .Values.global "defaultTag" "latest") | quote }}
+          imagePullPolicy: {{ $c.image.pullPolicy }}
+          args:
+            {{- range splitList "," (include "signal-lab.collectorConfigFiles" .) }}
+            - --config={{ $confDir }}/{{ . }}
+            {{- end }}
+          env:
+            {{- with include "signal-lab.collectorEnv" . }}{{- . | trim | nindent 12 }}{{- end }}
+            {{- with $c.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 5
+          {{- with $c.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $c.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ $confDir }}
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "signal-lab.componentName" (dict "ctx" $ "component" "collector") }}
+      {{- with include "signal-lab.scheduling" $c }}{{- . | trim | nindent 6 }}{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "collector" "annotations" $c.service.annotations) | nindent 2 }}
+spec:
+  type: {{ $c.service.type }}
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "collector") | nindent 4 }}
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+      appProtocol: http
+    - name: health
+      port: 13133
+      targetPort: health
+      protocol: TCP

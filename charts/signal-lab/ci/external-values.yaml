@@ -1,0 +1,47 @@
+# Every backend external: the chart deploys only the lab, runner, Collector and shop.
+global:
+  imageRegistry: mirror.example.com
+backends:
+  victoriametrics:
+    enabled: true
+    mode: external
+    external:
+      url: http://vmsingle.monitoring:8428
+      publicUrl: https://vm.example.com
+      grafanaUrl: http://grafana.monitoring:80
+      grafanaPublicUrl: https://grafana.example.com
+      grafanaDatasourceUid: vm-prod
+      grafanaToken:
+        existingSecret: grafana-token
+  jaeger:
+    enabled: true
+    mode: external
+    external:
+      url: http://jaeger-query.tracing:16686
+      publicUrl: https://jaeger.example.com
+      otlpEndpoint: jaeger-collector.tracing:4317
+  elastic:
+    enabled: true
+    mode: external
+    external:
+      elasticsearchUrl: https://es.example.com:443
+      kibanaUrl: https://kibana.example.com
+      apmServerUrl: https://apm.example.com:443
+      apiKey:
+        existingSecret: elastic-creds
+        key: es-api-key
+      apmAuthHeader:
+        existingSecret: elastic-creds
+        key: apm-auth
+collector:
+  extraConfig:
+    exporters:
+      otlp/elastic:
+        tls:
+          insecure: false
+serviceAccount:
+  create: false
+  name: signal-lab
+runner:
+  networkPolicy:
+    enabled: false

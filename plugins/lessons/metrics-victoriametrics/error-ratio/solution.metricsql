@@ -1,0 +1,3 @@
+sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+/
+sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))

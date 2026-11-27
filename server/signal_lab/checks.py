@@ -73,6 +73,9 @@ def _span_matches(span: dict, where: dict, spans_by_id: dict[str, dict]) -> tupl
         return False, "name"
     if "service" in where and span["service"] != where["service"]:
         return False, "service"
+    for key, expected in (where.get("resource") or {}).items():
+        if not _value_matches(span["resource"].get(key), expected):
+            return False, f"resource attribute `{key}` is `{span['resource'].get(key)}`, expected `{expected}`"
     if "kind" in where and span["kind"] != where["kind"]:
         return False, f"kind is `{span['kind']}`, expected `{where['kind']}`"
     if "status" in where and span["status"]["code"] != where["status"]:
@@ -170,7 +173,7 @@ def check_trace(check: dict, t: dict, ctx: dict) -> dict:
                     problems.append(f"{value} {key} (expected {need})")
         for svc in check.get("includes_services", []):
             if svc not in services:
-                problems.append(f"no spans from `{svc}`")
+                problems.append(f"no spans from `{svc}` (if it was called, it started its own trace: context wasn't propagated)")
         if not problems:
             return result(check, PASS, f"Trace spans {len(services)} service(s): {_fmt_list(sorted(services))}.")
         score = len(services) * 10 + len(spans)
@@ -244,19 +247,24 @@ def check_log(check: dict, t: dict, ctx: dict) -> dict:
             continue
         if "severity" in check and r["severity_text"].upper() != check["severity"].upper():
             continue
-        if check.get("correlated") and not (r["trace_id"] and r["span_id"]):
+        if "correlated" in check and bool(check["correlated"]) != bool(r["trace_id"] and r["span_id"]):
             continue
         if any(k not in r["attributes"] or not _value_matches(r["attributes"][k], v) for k, v in (check.get("attributes") or {}).items()):
             continue
         matched.append(r)
     ok, need = _count_ok(len(matched), check.get("count"))
     if ok:
+        if check.get("correlated") is False:
+            return result(check, PASS, "Every log record carries trace context.")
         return result(check, PASS, f"Found {len(matched)} matching log record(s).")
+    if check.get("correlated") is False:
+        return result(check, FAIL, f"{len(matched)} log record(s) were written outside any span: " + _fmt_list([str(r["body"]) for r in matched], 3) + ".")
     if not logs:
         return result(check, PENDING if ctx.get("collecting") else FAIL, "No log records were exported." if not ctx.get("collecting") else "No logs yet.")
     if check.get("correlated") and not any(r["trace_id"] for r in logs):
         return result(check, FAIL, "Logs arrived, but none carry a trace id. Log inside an active span.")
-    return result(check, FAIL, f"{len(logs)} log record(s) exported, {len(matched)} matching (expected {need}).")
+    bodies = _fmt_list([str(r["body"])[:60] for r in logs], 3)
+    return result(check, FAIL, f"{len(logs)} log record(s) exported, {len(matched)} matching (expected {need}). Messages seen: {bodies}.")
 
 
 # ----------------------------------------------------------------- output

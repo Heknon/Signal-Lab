@@ -1,0 +1,26 @@
+id: metrics-victoriametrics
+title: Metrics with VictoriaMetrics & Grafana
+description: >
+  Query the Signal Shop's OpenTelemetry metrics with MetricsQL, the
+  PromQL-compatible language of VictoriaMetrics, then turn the queries into a
+  Grafana dashboard and use it to track down a slow service. Needs the
+  victoriametrics backend.
+order: 20
+icon: gauge
+requires:
+  backends: [victoriametrics]
+modules:
+  - id: metricsql
+    title: MetricsQL fundamentals
+    description: >
+      Selectors, rates, aggregation, percentiles and ratios: the handful of
+      patterns behind almost every metrics query and dashboard panel.
+    assumes: [What a counter, gauge and histogram are]
+    lessons: [select-series, rate-counters, metric-types, aggregate, latency-percentiles, error-ratio, with-templates]
+  - id: grafana
+    title: Grafana
+    description: >
+      Explore labels, build a dashboard with a service variable, and use it
+      to investigate an injected latency problem.
+    assumes: [Writing rate() and histogram_quantile() queries]
+    lessons: [explore-labels, build-dashboard, find-slow-service]

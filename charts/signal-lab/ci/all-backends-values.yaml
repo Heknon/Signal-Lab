@@ -1,0 +1,84 @@
+# Every backend bundled, Ingress with TLS for every UI, extra Collector config.
+commonLabels:
+  team: training
+image:
+  tag: "0.1.0-ci"
+global:
+  imagePullSecrets:
+    - name: regcred
+backends:
+  victoriametrics:
+    enabled: true
+    persistence:
+      storageClass: standard
+      size: 5Gi
+    extraArgs: ["-memory.allowedPercent=40"]
+    grafana:
+      anonymousAdmin: false
+      env:
+        GF_SECURITY_ADMIN_USER: admin
+  jaeger:
+    enabled: true
+  elastic:
+    enabled: true
+    elasticsearch:
+      heap: -Xms512m -Xmx512m
+      persistence:
+        enabled: false
+      resources:
+        requests: {cpu: 250m, memory: 1Gi}
+        limits: {cpu: "1", memory: 1Gi}
+    kibana:
+      encryptionKey: ci-only-encryption-key-0123456789abcdef
+collector:
+  extraConfig:
+    exporters:
+      debug:
+        verbosity: detailed
+    service:
+      pipelines:
+        traces/debug:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+  extraEnv:
+    - name: EXTRA
+      value: "1"
+runner:
+  runtimeClassName: gvisor
+  networkPolicy:
+    dnsTo: []
+    extraEgress:
+      - to:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/component: victoriametrics
+        ports:
+          - port: 8428
+            protocol: TCP
+scenario:
+  loadgen:
+    rps: 5
+  services:
+    - name: storefront
+      replicaCount: 2
+    - name: checkout
+    - name: inventory
+    - name: payments
+      extraEnv:
+        - name: FOO
+          value: bar
+    - name: loadgen
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  hosts:
+    lab: lab.example.com
+    grafana: grafana.example.com
+    jaeger: jaeger.example.com
+    kibana: kibana.example.com
+  tls:
+    - secretName: signal-lab-tls
+      hosts: [lab.example.com, grafana.example.com, jaeger.example.com]
