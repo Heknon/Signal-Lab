@@ -420,7 +420,7 @@ if SERVICE == "payments":
         span.set_attribute("app.payment.amount", body.get("amount", 0))
         with tracer.start_as_current_span("provider.authorize", kind=trace.SpanKind.CLIENT) as s:
             s.set_attribute("server.address", "api.payments.example")
-            await asyncio.sleep(random.uniform(0.02, 0.06))
+            await asyncio.sleep(random.uniform(0.06, 0.12))  # external providers are the slow hop
             if random.random() < 0.02:
                 err = CardDeclined("card declined by issuer")
                 s.record_exception(err)

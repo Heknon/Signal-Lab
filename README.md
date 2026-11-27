@@ -229,6 +229,12 @@ every check type, experiments and incidents, backend adapters and scenarios.
   queries, deep links, task verification).
 - **A scenario** is any set of services exposing `/_stats` and `/_chaos`.
 
+To build a course like this one for another codebase or technology, use the
+[interactive-course-builder skill](skills/interactive-course-builder/SKILL.md).
+It is a portable folder that works without a network: an environment check,
+seven phases with a checklist and a required artifact each, references,
+templates, and standard-library tools for linting and screenshots.
+
 ## Testing
 
 ```bash
