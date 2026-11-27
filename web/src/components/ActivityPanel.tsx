@@ -46,7 +46,9 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 6
 
 /** Steady-state samples with threshold, abort line and the fault window shaded. */
 function SteadyChart({ a }: { a: ActivityState }) {
-  const W = 640, H = 180, P = { l: 44, r: 12, t: 12, b: 24 };
+  // Narrow screens get a narrower coordinate system so labels stay readable.
+  const narrow = typeof window !== "undefined" && window.innerWidth < 600;
+  const W = narrow ? 360 : 640, H = narrow ? 200 : 180, P = { l: 40, r: 10, t: 12, b: 24 };
   const t0 = a.started * 1000, t1 = Math.max(a.ends * 1000, t0 + 1);
   const values = a.samples.map(([, v]) => v);
   const abortAt = a.steady?.abort_at ?? a.steady?.abort_above;
