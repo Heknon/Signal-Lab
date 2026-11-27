@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, Eye, FlaskConical, Lightbulb, Lock, RotateCcw, SkipForward, X } from "lucide-react";
 import { api, type CheckResult, type Lesson } from "../api";
@@ -77,7 +77,12 @@ function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) 
           </div>
         );
       })}
-      {!results.length && wasDone && <div className="goals-foot"><Check style={{ width: 14, height: 14, color: "var(--accent)" }} />You completed this lesson before. Run it again any time.</div>}
+      {!results.length && wasDone && (
+        <div className="goals-foot">
+          <Check style={{ width: 14, height: 14, color: "var(--accent)" }} />You completed this lesson before. Run it again any time.
+          <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => progress.reset(lesson.id)}>Mark as not done</button>
+        </div>
+      )}
     </section>
   );
 }
@@ -118,19 +123,25 @@ export default function LessonPage() {
   useHotkey("[", (e) => { if (!(e.target as HTMLElement).closest(".cm-editor, input, textarea")) toggleSidebar(); });
 
   const onChecks = useCallback((c: CheckResult[]) => setResults(c), []);
+  // Results stream in, so "all goals pass" is seen many times per run. Announce
+  // completion once per lesson visit, and only if it wasn't already complete.
+  const pRef = useRef(p);
+  pRef.current = p;
+  const announced = useRef<string | null>(null);
   const onComplete = useCallback(() => {
-    if (!progress) return;
-    const already = !!p.completed[id];
-    progress.complete(id);
-    if (!already) toast("Lesson complete");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const already = !!pRef.current.completed[id];
+    progress.complete(id);  // no-op when already complete
+    if (!already && announced.current !== id) toast("Lesson complete");
+    announced.current = id;
   }, [id, toast]);
 
   // A lesson is complete when every goal passes (every question, for quizzes).
   const required = (l0: Lesson) => (["quiz", "experiment", "incident"].includes(l0.kind) ? (l0.quiz?.questions ?? []).map((q) => q.id) : l0.checks.map((c) => c.id));
   useEffect(() => {
     const l0 = lesson.data;
-    if (!l0) return;
+    // On navigation, lesson.data and results still belong to the previous lesson
+    // for a render; grading them would mark the new lesson complete.
+    if (!l0 || l0.id !== id) return;
     const ids = required(l0);
     const passed = new Set(results.filter((r) => r.status === "pass").map((r) => r.id));
     if (ids.length > 0 && ids.every((x) => passed.has(x))) onComplete();

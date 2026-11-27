@@ -54,6 +54,15 @@ export const progress = {
     set({ ...state, completed: { ...state.completed, [id]: Date.now() }, known });
     void put([id], "done");
   },
+  /** Back to "todo": clears done and known. */
+  reset(id: string) {
+    const completed = { ...state.completed };
+    const known = { ...state.known };
+    delete completed[id];
+    delete known[id];
+    set({ ...state, completed, known });
+    void put([id], null);
+  },
   setKnown(ids: string[], known: boolean) {
     const next = { ...state.known };
     for (const id of ids) {

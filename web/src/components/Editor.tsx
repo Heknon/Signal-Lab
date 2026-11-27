@@ -12,14 +12,15 @@ import { LanguageType, PromQLExtension } from "@prometheus-io/codemirror-promql"
 import { esqlLanguage } from "../lib/languages";
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "13px", backgroundColor: "transparent", color: "var(--text)" },
+  "&": { height: "100%", fontSize: "13px", backgroundColor: "var(--bg-sunken)", color: "var(--text)" },
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.65", overflow: "auto" },
   ".cm-content": { padding: "12px 0", caretColor: "var(--accent)" },
   ".cm-line": { padding: "0 16px 0 10px" },
-  ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--text-3)", paddingLeft: "6px" },
+  // Opaque, so code scrolled sideways passes under the line numbers instead of showing through.
+  ".cm-gutters": { backgroundColor: "var(--bg-sunken)", border: "none", color: "var(--text-3)", paddingLeft: "6px" },
   ".cm-lineNumbers .cm-gutterElement": { padding: "0 6px 0 8px", minWidth: "32px", fontSize: "12px" },
   ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--surface-3) 45%, transparent)" },
-  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--text-2)" },
+  ".cm-activeLineGutter": { backgroundColor: "var(--bg-sunken)", color: "var(--text-2)" },
   "&.cm-focused": { outline: "none" },
   "&.cm-focused .cm-cursor": { borderLeftColor: "var(--accent)", borderLeftWidth: "2px" },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": { backgroundColor: "color-mix(in srgb, var(--accent) 22%, transparent) !important" },

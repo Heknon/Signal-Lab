@@ -31,7 +31,8 @@ export function LabProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((msg: string) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg }]);
+    // The same message twice at once is noise: keep the one already showing.
+    setToasts((t) => (t.some((x) => x.msg === msg) ? t : [...t, { id, msg }]));
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   }, []);
 
