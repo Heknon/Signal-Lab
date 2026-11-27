@@ -1,0 +1,55 @@
+# Phase 1: Map the subject
+
+**Goal:** know the target system well enough to decide what is worth teaching,
+grounded in its real code and configuration.
+
+**Read:** the target codebase or technology: source, configs, docs, examples,
+tests, issue tracker or changelog if available, and the way it's deployed.
+
+**Produce:** `course/concept-map.md`, from [`templates/concept-map.md`](../templates/concept-map.md).
+
+## Checklist
+
+1. [ ] **Inventory the system.** List the top-level components, entry points,
+   config files, public APIs, CLI commands, and the signals it emits (logs,
+   metrics, traces, events, files, exit codes). Record real paths.
+2. [ ] **Find where engineers spend time.** Use evidence in this order:
+   - files that change most often (`git log --format= --name-only | sort | uniq -c | sort -rn | head -50`)
+   - the most-used config keys and flags in examples, tests and docs
+   - questions and bugs in issues, FAQs and troubleshooting docs
+   - the "getting started" path in the official docs
+3. [ ] **List candidate concepts.** One concept is one idea a learner can use or
+   misuse: "context propagation", "connection pool sizing", "retry policy". Aim
+   for 25–80 for a medium system.
+4. [ ] **Score each concept** from 1 to 5 on:
+   - **Frequency:** how often an engineer touches it in normal work.
+   - **Blast radius:** how bad it is when someone gets it wrong.
+   - **Confusion:** how often newcomers misunderstand it (cite the evidence: an issue, a doc warning, a common bug).
+
+   Priority = frequency + blast radius + confusion (3–15).
+5. [ ] **Cite artifacts for every concept.** At least one real path, symbol,
+   config key, command or metric name per concept. If you can't find one, the
+   concept is either not part of this system or you haven't looked enough.
+6. [ ] **Record failure modes** for each concept with blast radius ≥ 3: what
+   breaks, what the symptom looks like, and which signal shows it. These become
+   incidents in phase 2.
+7. [ ] **Write the deliberate gaps.** Concepts you saw and chose not to teach,
+   each with a reason (out of scope, deprecated, too rare, needs hardware...).
+   Nothing may be missed *by accident*.
+8. [ ] **Note the observable surface.** What can a checker read without
+   trusting the learner? Process output, HTTP responses, database state, files,
+   telemetry, metrics endpoints, logs, CLI exit codes. Phase 3 builds on this.
+
+## Exit criteria
+
+- `python tools/lint_artifacts.py course/concept-map.md` passes.
+- Every concept row has a score, a priority and at least one artifact citation.
+- `python tools/check_sources.py --repo <target> course/concept-map.md` finds every cited path.
+- The deliberate-gaps section is present (it may say "none", with a reason).
+
+## Common mistakes
+
+- Listing chapter titles from the official docs instead of concepts. Docs are
+  organised for reference, not for learning.
+- Scoring everything 4–5. Force a spread: at most a quarter of the concepts get priority ≥ 12.
+- Citing a directory when the concept lives in one file or one config key.

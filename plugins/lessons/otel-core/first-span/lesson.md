@@ -4,6 +4,7 @@ summary: Create a span, run it, and follow it through the Collector into real ba
 kind: code
 minutes: 4
 concepts: [span, tracer, auto-configuration]
+assumes: []
 runtime:
   service: hello-otel
 checks:
