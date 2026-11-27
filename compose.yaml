@@ -17,6 +17,10 @@ x-shop-env: &shop-env
   OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
   OTEL_LOGS_EXPORTER: otlp
   OTEL_METRIC_EXPORT_INTERVAL: "5000"
+  # Export spans and logs quickly: a learner's trace that calls the shop is graded
+  # as soon as the shop's half arrives, instead of after the default 5 s batch.
+  OTEL_BSP_SCHEDULE_DELAY: "500"
+  OTEL_BLRP_SCHEDULE_DELAY: "500"
   OTEL_SEMCONV_STABILITY_OPT_IN: http
   OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: fastapi
   OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=lab,service.version=1.4.2

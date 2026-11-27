@@ -48,6 +48,7 @@ class Run:
     trace_ids: set[str] = field(default_factory=set)
     volume: dict[str, int] = field(default_factory=lambda: {"spans": 0, "metrics": 0, "logs": 0})
     version: int = 0
+    last_telemetry: float = 0.0  # monotonic time of the latest span, point or log
     _listeners: list[asyncio.Queue] = field(default_factory=list)
 
     # -- event fan-out -------------------------------------------------
@@ -67,6 +68,7 @@ class Run:
 
     # -- telemetry -----------------------------------------------------
     def add_spans(self, spans: list[dict]) -> None:
+        self.last_telemetry = time.monotonic()
         seen = {(s["trace_id"], s["span_id"]) for s in self.spans}
         for s in spans:
             if (s["trace_id"], s["span_id"]) in seen:
@@ -78,6 +80,7 @@ class Run:
         self.emit("telemetry")
 
     def add_points(self, points: list[dict]) -> None:
+        self.last_telemetry = time.monotonic()
         for p in points:
             self.volume["metrics"] += _approx_bytes(p)
             key = _series_key(p)
@@ -95,6 +98,7 @@ class Run:
         self.emit("telemetry")
 
     def add_logs(self, logs: list[dict]) -> None:
+        self.last_telemetry = time.monotonic()
         self.logs.extend(logs)
         self.volume["logs"] += sum(_approx_bytes(r) for r in logs)
         del self.logs[:-MAX_LOGS]
@@ -172,7 +176,9 @@ class Store:
         self.stats = {"spans": 0, "points": 0, "logs": 0, "dropped": 0}
 
     def active_for(self, user_id: str | None) -> Run | None:
-        return next((r for r in self.runs.values() if r.user_id == user_id and r.status in ("queued", "running", "collecting")), None)
+        """A run whose program is still executing. A run that is only collecting late
+        telemetry doesn't count: a new run replaces it (the learner fixed their code)."""
+        return next((r for r in self.runs.values() if r.user_id == user_id and r.status in ("queued", "running")), None)
 
     def create(self, lesson: str, code: str, user_id: str | None = None) -> Run:
         run = Run(id=uuid.uuid4().hex[:12], lesson=lesson, code=code, user_id=user_id)
