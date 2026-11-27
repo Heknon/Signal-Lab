@@ -89,6 +89,23 @@ class Adapter(BackendAdapter):
                 pass
         return res
 
+    async def _verify_alert_rule(self, check: dict) -> Verdict:
+        """A Grafana-managed alert rule whose title and query match the lesson."""
+        r = await self.client.get(f"{self.grafana}/api/v1/provisioning/alert-rules", headers=self._grafana_headers())
+        if r.status_code != 200:
+            return Verdict(False, f"Grafana returned HTTP {r.status_code}.")
+        wanted_title = check.get("title_contains", "").lower()
+        rules = [x for x in r.json() if wanted_title in x.get("title", "").lower()]
+        if not rules:
+            return Verdict(False, f"No alert rule{' titled like “' + check['title_contains'] + '”' if wanted_title else ''} yet. Save it in Alerting → Alert rules.")
+        wanted = [w.lower() for w in check.get("expr_contains", [])]
+        for rule in rules:
+            exprs = " ".join(str(q.get("model", {}).get("expr", "")) for q in rule.get("data", [])).lower()
+            missing = [w for w in wanted if w not in exprs]
+            if not missing:
+                return Verdict(True, f"Alert rule “{rule['title']}” queries the right thing.")
+        return Verdict(False, f"“{rules[0]['title']}” exists, but its query doesn't use " + ", ".join(f"`{m}`" for m in missing) + ".")
+
     def link(self, kind: str, params: dict) -> str | None:
         if kind in ("metric", "query"):
             # OTLP names gain unit and _total suffixes on the way in, so match by prefix.
@@ -98,6 +115,8 @@ class Adapter(BackendAdapter):
         return super().link(kind, params)
 
     async def verify(self, check: dict, context: dict) -> Verdict | None:
+        if check.get("verify") == "grafana_alert_rule":
+            return await self._verify_alert_rule(check)
         if check.get("verify") != "grafana_dashboard":
             return None
         r = await self.client.get(f"{self.grafana}/api/search", params={"type": "dash-db", "query": check.get("title_contains", "")}, headers=self._grafana_headers())
@@ -129,6 +148,7 @@ class Adapter(BackendAdapter):
                 problems.append("missing variable " + ", ".join(f"`${v}`" for v in need_vars))
             best = best or f"“{dash.get('title')}”: " + "; ".join(problems)
         return Verdict(False, best)
+
 
 
 def _flatten_panels(panels: list[dict]) -> list[dict]:

@@ -26,7 +26,7 @@ modules:
     title: Metrics
     description: Instruments, attributes, histograms, and the cost of cardinality.
     assumes: [Basic Python]
-    lessons: [counters, histograms, gauges, cardinality]
+    lessons: [counters, histograms, gauges, cardinality, exemplars]
   - id: logs
     title: Logs
     description: Structured logs that you can query, and logs that link back to traces.

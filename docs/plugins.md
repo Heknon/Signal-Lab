@@ -156,6 +156,18 @@ Passes if **any** trace in the run satisfies all conditions:
   count: {min: 1}                 # {max: 0} to assert that nothing matches
 ```
 
+#### `budget`
+
+Telemetry costs money. Pass only if the run stayed within limits:
+
+```yaml
+- type: budget
+  spans: {max: 15}
+  series: {max: 10}
+  logs: {max: 4}
+  hint: Shown when over budget.
+```
+
 #### `output` and `exit`
 
 ```yaml
@@ -239,7 +251,7 @@ checks:
     variables: [service]
 ```
 
-Built-in verifications: `grafana_dashboard` (victoriametrics),
+Built-in verifications: `grafana_dashboard` and `grafana_alert_rule` (`title_contains`, `expr_contains`) (victoriametrics),
 `kibana_dashboard` and `kibana_rule` (elastic).
 
 ### Testing lessons

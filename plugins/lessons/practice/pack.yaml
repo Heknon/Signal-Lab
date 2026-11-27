@@ -1,0 +1,10 @@
+id: practice
+title: Observability in practice
+description: >
+  Judgment, not syntax: choosing the right signal, the methods teams use to
+  watch systems, chaos experiments, and incidents you investigate from metrics.
+order: 40
+icon: gauge
+requires:
+  backends: [victoriametrics]
+modules: []
