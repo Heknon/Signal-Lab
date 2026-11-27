@@ -56,6 +56,10 @@ spec:
               value: otlp
             - name: OTEL_METRIC_EXPORT_INTERVAL
               value: {{ $s.otel.metricExportInterval | toString | quote }}
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "500"
+            - name: OTEL_BLRP_SCHEDULE_DELAY
+              value: "500"
             - name: OTEL_SEMCONV_STABILITY_OPT_IN
               value: http
             {{- with $s.otel.disabledInstrumentations }}

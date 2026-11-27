@@ -47,10 +47,10 @@ function Confirmations({ run }: { run: RunSummary | null }) {
 }
 
 export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; onChecks: (c: CheckResult[], run: RunSummary | null) => void }) {
-  const { meta } = useLab();
+  const { meta, toast } = useLab();
   const starter = lesson.starter?.content ?? "";
   const [code, setCode] = useState(() => drafts.get(lesson.id) ?? starter);
-  const { run, output, telemetry, error, start, busy } = useRun(lesson.id);
+  const { run, output, telemetry, error, start, busy, running } = useRun(lesson.id);
   const [tab, setTab] = useState<Tab>("console");
   const [file, setFile] = useState<"main" | "traffic">("main");
   const language = (lesson.starter?.language === "yaml" ? "yaml" : "python") as "yaml" | "python";
@@ -69,19 +69,38 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   }, [lesson.id, starter]);
   useEffect(() => { onChecks(run?.checks ?? [], run); }, [run, onChecks]);
 
-  // Follow the run: console while it executes, then the most relevant signal.
+  // Follow the run: console while the first run executes, then the most relevant
+  // signal. Later runs stay on the current tab (no Console/Traces bounce on every
+  // run) unless the program fails, when the console is what matters.
+  const followed = useRef(false);
+  useEffect(() => { followed.current = false; }, [lesson.id]);
   useEffect(() => {
     if (!run || userPicked.current) return;
-    if (run.status === "running") setTab("console");
+    if (run.status === "running" && !followed.current) setTab("console");
+    if (run.exit_code != null && run.exit_code !== 0) { setTab("console"); return; }
     if ((run.status === "done" || run.status === "error" || run.status === "collecting") && run.exit_code === 0) {
       const t = primaryTab(lesson);
       const has = t === "traces" ? telemetry.spans.length : t === "metrics" ? telemetry.metrics.length : t === "logs" ? telemetry.logs.length : 1;
-      if (has) setTab(t);
+      if (has) { setTab(t); followed.current = true; }
     }
   }, [run, telemetry, lesson]);
 
+  // Pressing Run while the program is still executing queues one more run, which
+  // starts with the latest code as soon as the current program exits.
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const [queued, setQueued] = useState(false);
+  useEffect(() => { setQueued(false); }, [lesson.id]);
+  useEffect(() => {
+    if (queued && !running) { setQueued(false); userPicked.current = false; setFocus(null); start(codeRef.current); }
+  }, [queued, running, start]);
   const execute = () => {
-    if (busy || !meta?.runs_enabled) return;
+    if (!meta?.runs_enabled) return;
+    if (running) {
+      if (!queued) toast("Runs again as soon as the current run finishes");
+      setQueued(true);
+      return;
+    }
     userPicked.current = false;
     setFocus(null);
     start(code);
@@ -112,8 +131,8 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         <span className="spacer" />
         {status}
         <button className="btn btn-ghost btn-sm" onClick={() => onEdit(starter)} disabled={!modified} title="Reset to starter code"><RotateCcw />Reset</button>
-        <button className="btn btn-primary btn-sm" onClick={execute} disabled={busy || !meta?.runs_enabled} title={meta?.runs_enabled === false ? "Code execution is disabled on this deployment" : `Run (${modKey} Enter)`}>
-          {busy ? <span className="spinner" /> : <Play />}Run<span className="kbd">{modKey}↵</span>
+        <button className="btn btn-primary btn-sm" onClick={execute} disabled={!meta?.runs_enabled} title={meta?.runs_enabled === false ? "Code execution is disabled on this deployment" : `Run (${modKey} Enter)`}>
+          {busy ? <span className="spinner" /> : <Play />}{queued ? "Queued" : "Run"}<span className="kbd">{modKey}↵</span>
         </button>
       </div>
       <div className="grow" style={{ minHeight: 0 }}>

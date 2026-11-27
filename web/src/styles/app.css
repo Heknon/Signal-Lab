@@ -303,6 +303,8 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .goals { margin: 0 0 26px; overflow: hidden; }
 .goals-head { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; color: var(--text-2); }
 .goals-head .progress-text { margin-left: auto; color: var(--text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
+.goals .goal { transition: opacity 150ms ease-out; }
+.goals.checking .goal { opacity: 0.5; }
 .goals.complete { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .goals.complete .goals-head { color: var(--accent); }
 .goal { display: flex; gap: 11px; padding: 10px 14px; border-bottom: 1px solid var(--border); align-items: flex-start; }

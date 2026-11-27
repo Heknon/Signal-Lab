@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Check, ChevronRight, Eye, FlaskConical, Lightbulb, Lock, RotateCcw, SkipForward, X } from "lucide-react";
-import { api, type CheckResult, type Lesson } from "../api";
+import { api, type CheckResult, type Lesson, type RunSummary } from "../api";
 import { useLab, type FlatLesson } from "../context";
 import { useAsync, useHotkey } from "../lib/hooks";
 import { lessonState, progress, useProgress } from "../lib/progress";
@@ -49,7 +49,7 @@ function Sidebar({ current }: { current: FlatLesson }) {
   );
 }
 
-function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) {
+function Goals({ lesson, results, checking }: { lesson: Lesson; results: CheckResult[]; checking: boolean }) {
   const p = useProgress();
   const byId = new Map(results.map((r) => [r.id, r]));
   // Quiz questions are their own goals; listing "Question 1..n" again is noise.
@@ -59,10 +59,10 @@ function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) 
   if (!items.length) return null;
   const wasDone = !!p.completed[lesson.id];
   return (
-    <section className={`card goals ${complete ? "complete" : ""}`} aria-label="Goals">
+    <section className={`card goals ${complete && !checking ? "complete" : ""} ${checking ? "checking" : ""}`} aria-label="Goals" aria-busy={checking}>
       <div className="goals-head">
-        {complete ? "All goals met" : "Goals"}
-        <span className="progress-text">{passed}/{items.length}</span>
+        {checking ? "Checking…" : complete ? "All goals met" : "Goals"}
+        {!checking && <span className="progress-text">{passed}/{items.length}</span>}
       </div>
       {items.map((it) => {
         const r = byId.get(it.id);
@@ -77,7 +77,7 @@ function Goals({ lesson, results }: { lesson: Lesson; results: CheckResult[] }) 
           </div>
         );
       })}
-      {!results.length && wasDone && (
+      {!results.length && !checking && wasDone && (
         <div className="goals-foot">
           <Check style={{ width: 14, height: 14, color: "var(--accent)" }} />You completed this lesson before. Run it again any time.
           <button className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => progress.reset(lesson.id)}>Mark as not done</button>
@@ -112,7 +112,7 @@ export default function LessonPage() {
   const [scenarioNote, setScenarioNote] = useState<string[] | null>(null);
   const nav = useNavigate();
 
-  useEffect(() => { setResults([]); setScenarioNote(null); progress.visit(id); if (!wide) setSidebarOpen(false); }, [id]);
+  useEffect(() => { setResults([]); setChecking(false); setScenarioNote(null); progress.visit(id); if (!wide) setSidebarOpen(false); }, [id]);
   useEffect(() => {
     const l = lesson.data;
     if (l?.scenario && (l.scenario.chaos || l.scenario.load !== undefined)) {
@@ -122,7 +122,14 @@ export default function LessonPage() {
   const toggleSidebar = () => setSidebarOpen((v) => { if (wide) { try { localStorage.setItem("sl-sidebar", v ? "0" : "1"); } catch { /* ignore */ } } return !v; });
   useHotkey("[", (e) => { if (!(e.target as HTMLElement).closest(".cm-editor, input, textarea")) toggleSidebar(); });
 
-  const onChecks = useCallback((c: CheckResult[]) => setResults(c), []);
+  // While a new run starts, its checks are empty. Keep the previous results on
+  // screen (dimmed) until the new ones arrive, instead of blanking the goals.
+  const [checking, setChecking] = useState(false);
+  const onChecks = useCallback((c: CheckResult[], run?: RunSummary | null) => {
+    const active = !!run && (run.status === "queued" || run.status === "running");
+    setChecking(active && c.length === 0);
+    if (!active || c.length > 0) setResults(c);
+  }, []);
   // Results stream in, so "all goals pass" is seen many times per run. Announce
   // completion once per lesson visit, and only if it wasn't already complete.
   const pRef = useRef(p);
@@ -192,7 +199,7 @@ export default function LessonPage() {
               <span>{l.scenario?.note ?? "This lesson changed the scenario."} Faults are active on <b>{scenarioNote.join(", ")}</b>. <a href="#" onClick={(e) => { e.preventDefault(); setScenarioOpen(true); }} style={{ textDecoration: "underline" }}>Open scenario</a></span>
             </div>
           )}
-          <Goals lesson={l} results={results} />
+          <Goals lesson={l} results={results} checking={checking} />
           <Markdown>{l.body}</Markdown>
           {l.kind === "code" && l.tools.length > 0 && <div style={{ margin: "8px 0 20px" }}><ToolLinks tools={l.tools} /></div>}
           <Hints key={l.id} hints={l.hints} />

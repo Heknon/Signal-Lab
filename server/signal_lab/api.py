@@ -139,6 +139,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lesson_checks = [c for c in lesson.checks() if c["type"] not in checks.DEFERRED]
         exit_seen = time.monotonic()
         min_settle, max_settle = 1.2, float(lesson.meta.get("settle_s", 6))
+        # Late telemetry (the shop's half of a trace) arrives within ~2 s of the last
+        # batch. Once nothing has arrived for QUIET_S, waiting longer only delays a
+        # failing result the learner is about to fix.
+        quiet_s = 2.0
         needs_telemetry = any(c["type"] in ("span", "trace", "metric", "log") for c in lesson_checks)
         while True:
             ctx = {"collecting": True, "output": run.output, "exit_code": run.exit_code}
@@ -146,7 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run.emit("status")
             elapsed = time.monotonic() - exit_seen
             all_pass = all(c["status"] == checks.PASS for c in run.checks)
-            if elapsed >= max_settle or (elapsed >= min_settle and (all_pass or not needs_telemetry)):
+            quiet = time.monotonic() - max(exit_seen, run.last_telemetry) >= quiet_s
+            if elapsed >= max_settle or (elapsed >= min_settle and (all_pass or not needs_telemetry or quiet)):
                 break
             await asyncio.sleep(0.3)
         ctx = {"collecting": False, "output": run.output, "exit_code": run.exit_code}
