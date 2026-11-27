@@ -285,6 +285,9 @@ scenario:
     resourceAttributes: deployment.environment.name=lab,service.version=1.4.2
     # -- Metric export interval in milliseconds (`OTEL_METRIC_EXPORT_INTERVAL`).
     metricExportInterval: 5000
+    # -- Auto-instrumentations to skip (`OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`). The shop
+    # instruments FastAPI itself, to drop the per-message ASGI send/receive spans.
+    disabledInstrumentations: fastapi
   # -- Default replicas per shop service.
   replicaCount: 1
   # -- Default resources per shop service.

@@ -46,6 +46,16 @@ STOCK = {p["sku"]: random.randint(40, 120) for p in PRODUCTS}
 app = FastAPI(title=f"signal-shop {SERVICE}")
 client = httpx.AsyncClient(timeout=10)
 
+# FastAPI is instrumented explicitly (and disabled in auto-instrumentation via
+# OTEL_PYTHON_DISABLED_INSTRUMENTATIONS=fastapi) so we can drop the noisy
+# per-message ASGI "http send/receive" spans.
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app, exclude_spans=["send", "receive"], excluded_urls="_stats,_chaos,_load")
+except ImportError:  # pragma: no cover
+    pass
+
 
 # ------------------------------------------------------------------ chaos & stats
 class Chaos(BaseModel):

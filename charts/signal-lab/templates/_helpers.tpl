@@ -74,14 +74,6 @@ Usage: include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "l
 app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
-{{/* Metadata annotations shared by every resource (commonAnnotations). */}}
-{{- define "signal-lab.annotations" -}}
-{{- with .Values.commonAnnotations }}
-annotations:
-  {{- toYaml . | nindent 2 }}
-{{- end }}
-{{- end }}
-
 {{/*
 Resource metadata for a component (name, labels, annotations).
 Usage: include "signal-lab.metadata" (dict "ctx" $ "component" "lab" "annotations" (dict ...))

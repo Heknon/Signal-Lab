@@ -56,6 +56,10 @@ spec:
               value: {{ $s.otel.metricExportInterval | toString | quote }}
             - name: OTEL_SEMCONV_STABILITY_OPT_IN
               value: http
+            {{- with $s.otel.disabledInstrumentations }}
+            - name: OTEL_PYTHON_DISABLED_INSTRUMENTATIONS
+              value: {{ . | quote }}
+            {{- end }}
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: {{ $s.otel.resourceAttributes | quote }}
             {{- with include "signal-lab.shopUrlEnv" $ }}{{- . | trim | nindent 12 }}{{- end }}

@@ -485,6 +485,9 @@
             "metricExportInterval": {
               "type": "integer",
               "minimum": 100
+            },
+            "disabledInstrumentations": {
+              "type": "string"
             }
           },
           "additionalProperties": false

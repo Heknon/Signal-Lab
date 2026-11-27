@@ -26,8 +26,8 @@ data:
       - name: signal-lab
         folder: Signal Lab
         type: file
-        disableDeletion: false
-        allowUiUpdates: true
+        disableDeletion: true
+        allowUiUpdates: false
         options:
           path: /var/lib/grafana/dashboards/signal-lab
   {{- end }}

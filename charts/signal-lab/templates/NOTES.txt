@@ -4,9 +4,10 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
 
 1. Open the lab
 {{- if .Values.ingress.enabled }}
+{{- if .Values.ingress.hosts.lab }}
    {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" "" "host" "lab" "port" .Values.lab.service.port) }}
-{{- if not .Values.ingress.hosts.lab }}
-   (the lab rule matches any host: use your ingress controller's address)
+{{- else }}
+   The Ingress rule for the lab matches any host: open your ingress controller's address.
 {{- end }}
 {{- else if eq .Values.lab.service.type "LoadBalancer" }}
    kubectl -n {{ .Release.Namespace }} get svc {{ $lab }} -w   # wait for EXTERNAL-IP, then open http://<EXTERNAL-IP>:{{ .Values.lab.service.port }}
@@ -33,6 +34,12 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
        Grafana: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "grafana") }} 3000:3000
 {{- end }}
 {{- end }}
+{{- if eq $vm.mode "external" }}
+       VictoriaMetrics: {{ $vm.external.publicUrl | default $vm.external.url }}
+{{- with $vm.external.grafanaUrl }}
+       Grafana: {{ $vm.external.grafanaPublicUrl | default . }}
+{{- end }}
+{{- end }}
 {{- if eq $vm.mode "bundled" }}
        VMUI:    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "victoriametrics") }} 8428:8428
 {{- end }}
@@ -46,6 +53,8 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
 {{- else }}
        Jaeger UI: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "jaeger") }} 16686:16686
 {{- end }}
+{{- else }}
+       Jaeger UI: {{ $j.external.publicUrl | default $j.external.url }}
 {{- end }}
 {{- end }}
 {{- $e := .Values.backends.elastic }}
@@ -59,9 +68,11 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
 {{- end }}
        WARNING: the bundled Elastic stack has security disabled. Keep it off untrusted networks.
        Kibana can take a few minutes to become ready.
+{{- else }}
+       Kibana: {{ $e.external.kibanaPublicUrl | default $e.external.kibanaUrl }}
 {{- end }}
 {{- end }}
-{{- if not .Values.ingress.enabled }}
+{{- if and (not .Values.ingress.enabled) (or (include "signal-lab.bundled" (dict "ctx" $ "id" "victoriametrics")) (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic"))) }}
 
    Backend links in the lab point at localhost ports, so run the port-forwards above
    (or set the *.publicUrl values / enable the Ingress).
