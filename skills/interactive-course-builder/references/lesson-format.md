@@ -42,7 +42,9 @@ assumes: [Connection pool sizing]          # what you should know already
 sources:                                   # REQUIRED: real artifacts in the target system
   - src/db/pool.py#Pool.acquire
   - config/defaults.yaml#database.pool_size
-runtime: {timeout: 20, env: {}}            # code/config lessons
+runtime:                                   # code/config lessons; how the runner executes it
+  timeout: 20                              #   seconds before the run is killed
+  env: {POOL_SIZE: "2"}                    #   extra environment variables for this lesson
 hints:                                     # 2-3, from "where to look" to nearly the answer
   - Look at how long requests wait before they get a connection.
   - "`pool_wait_seconds` is a histogram per pool."
@@ -55,11 +57,11 @@ Kind-specific blocks:
 | Kind | Extra front matter |
 |---|---|
 | `query` | `query: {backend, language, range_s, examples: [{label, query}]}` |
-| `quiz` | `quiz: {questions: [{id, prompt, options: [{id, label}], answer, explanation, hint, multiple}]}` |
+| `quiz` | `quiz: {questions: [...]}` (see Questions below) |
 | `task` | `tools: [<links to the UI>]`, checks of type `backend` verified through an API |
 | `config` | `filename`, plus `traffic.*` that runs through the learner's config |
-| `experiment` | `experiment: {hypothesis, steady_state: {query, threshold, abort_at, direction}, baseline_s, inject, duration_s, recovery_s}` |
-| `incident` | `incident: {duration_s, timeline: [{at, set, load, fault: true}]}`, plus questions of kind `time`, `outcome` and `query` |
+| `experiment` | `experiment: {hypothesis, steady_state: {query, threshold, abort_at, direction}, baseline_s, inject, duration_s, recovery_s}`, plus `quiz: {questions: [...]}` |
+| `incident` | `incident: {duration_s, timeline: [{at, set, load, fault: true}]}`, plus `quiz: {questions: [...]}` |
 
 ## Prose rules
 
@@ -81,6 +83,31 @@ Kind-specific blocks:
   state is shared with libraries (e.g. id generators) and makes outcomes flaky.
 
 ## Questions
+
+Questions always live under `quiz: {questions: [...]}`, for quiz, incident and
+experiment lessons alike.
+
+```yaml
+quiz:
+  questions:
+    - id: start
+      kind: time                 # omit kind for multiple choice
+      prompt: When did the problem start?
+      tolerance_s: 120
+      hint: Where does the line first leave its usual band?
+    - id: cause
+      prompt: Which service is the root cause?
+      options: [{id: a, label: storefront}, {id: b, label: checkout}]
+      answer: b
+      multiple: false
+      explanation: Checkout retries every failed payment, tripling payments traffic.
+    - id: evidence
+      kind: query
+      prompt: Write a query that shows it.
+      language: metricsql
+      must_include: [rate]
+      expect: {top: {service_name: payments}}
+```
 
 | Kind | Graded against |
 |---|---|

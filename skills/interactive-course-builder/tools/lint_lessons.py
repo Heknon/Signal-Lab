@@ -3,6 +3,7 @@
 
 Usage:
     python tools/lint_lessons.py plugins/lessons
+    python tools/lint_lessons.py plugins/lessons --adapter course/adapter.md   # also validate check types
     python tools/lint_lessons.py plugins/lessons --skip sources   # e.g. for a course about a public technology
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import PLACEHOLDER, Report, front_matter, lesson_files  # noqa: E402
+from _common import PLACEHOLDER, Report, column, front_matter, lesson_files, sections, tables  # noqa: E402
 
 NEEDS_FILES = {"code", "config", "collector", "query"}      # starter.* and solution.*
 NEEDS_CHECKS = {"code", "config", "collector", "query", "task"}
@@ -29,7 +30,7 @@ GENERIC = [r"\bfoo\b", r"\bacme\b", r"\bjohn doe\b", r"\bexample\.com\b", r"\bmy
 EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⭐✅]")
 
 
-def lint_lesson(path: Path, root: Path, skip: set[str], rep: Report, packed: set[str]) -> None:
+def lint_lesson(path: Path, root: Path, skip: set[str], rep: Report, packed: set[str], types: set[str]) -> None:
     folder = path.parent
     where = str(folder.relative_to(root))
     text = path.read_text(encoding="utf-8")
@@ -68,9 +69,20 @@ def lint_lesson(path: Path, root: Path, skip: set[str], rep: Report, packed: set
             if isinstance(c, dict) and "_raw" not in c and not c.get("title"):
                 rep.error(where, f"check {c.get('id', '?')} has no title")
     if kind in NEEDS_QUESTIONS:
-        spec = fm.get("quiz") or fm.get("incident") or fm.get("experiment") or fm.get("questions")
-        if not spec:
-            rep.error(where, f"a {kind} lesson needs a quiz/{kind} block with questions")
+        quiz = fm.get("quiz")
+        has_questions = isinstance(quiz, dict) and (quiz.get("questions") or "_raw" in quiz)
+        if not has_questions:
+            where_q = " (found top-level `questions:`; move it under `quiz:`)" if "questions" in fm else ""
+            rep.error(where, f"a {kind} lesson needs `quiz: {{questions: [...]}}`{where_q}")
+        if kind in ("incident", "experiment") and not fm.get(kind):
+            rep.error(where, f"an {kind} lesson needs an `{kind}:` block")
+    if types:
+        fm_raw = text.split("\n---", 1)[0]
+        checks_raw = fm_raw.split("\nchecks:", 1)[1] if "\nchecks:" in fm_raw else ""
+        checks_raw = re.split(r"\n[A-Za-z_]", checks_raw, maxsplit=1)[0]
+        for t in re.findall(r"^\s*(?:-\s+)?type:\s*[\"']?([\w.-]+)", checks_raw, re.M):
+            if t not in types:
+                rep.error(where, f"check type '{t}' is not defined in adapter.md Check types ({', '.join(sorted(types))})")
     if kind in NEEDS_HINTS and "hints" not in skip and not fm.get("hints"):
         rep.error(where, "no hints")
 
@@ -131,14 +143,21 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path, help="folder that contains the lesson folders")
     ap.add_argument("--skip", action="append", default=[], help="front-matter key not to require (repeatable)")
+    ap.add_argument("--adapter", type=Path, help="course/adapter.md: check types must be listed in its Check types table")
     args = ap.parse_args()
     rep = Report("lint_lessons")
+    types: set[str] = set()
+    if args.adapter:
+        body = sections(args.adapter.read_text(encoding="utf-8")).get("Check types", "")
+        types = {column(r, "type").replace("`", "").strip() for t in tables(body) for r in t} - {""}
+        if not types:
+            rep.error(str(args.adapter), "no Check types table rows")
     files = lesson_files(args.root)
     if not files:
         rep.error(str(args.root), "no lesson.md files found")
     packed = packed_lessons(args.root)
     for f in files:
-        lint_lesson(f, args.root, set(args.skip), rep, packed)
+        lint_lesson(f, args.root, set(args.skip), rep, packed, types)
     return rep.finish(f"{len(files)} lessons")
 
 

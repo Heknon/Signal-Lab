@@ -26,7 +26,9 @@ are not files, use a prefix: `metric:`, `cmd:`, `key:`, `api:`, `doc:`.
 
 ## Failure modes
 
-For every concept with blast ≥ 3.
+For every concept with blast ≥ 3. A signal is whatever the system exposes: a
+metric, log line, trace, exception class, return value, HTTP status, exit code
+or file. Libraries without telemetry are observed through their API surface.
 
 | Concept | What breaks | Symptom | Signal that shows it |
 |---|---|---|---|
@@ -44,4 +46,4 @@ Concepts seen and deliberately not taught. Write "None" with a reason if empty.
 
 | Concept | Reason |
 |---|---|
-| {{concept-id or name}} | {{out of scope / deprecated / too rare / needs hardware}} |
+| {{concept-id (an id from the Concepts table, not a name)}} | {{out of scope / deprecated / too rare / needs hardware}} |

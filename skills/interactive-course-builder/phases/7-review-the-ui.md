@@ -33,4 +33,4 @@ screenshots in `course/screenshots/`.
 
 - The final round finds no deslop violations and no overflow at any width.
 - Screenshots of the final state are committed.
-- `python tools/lint_artifacts.py course/ui-review.md` passes.
+- `python <skill>/tools/lint_artifacts.py course/ui-review.md` passes.

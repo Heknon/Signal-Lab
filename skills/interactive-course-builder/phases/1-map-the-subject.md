@@ -19,8 +19,9 @@ tests, issue tracker or changelog if available, and the way it's deployed.
    - questions and bugs in issues, FAQs and troubleshooting docs
    - the "getting started" path in the official docs
 3. [ ] **List candidate concepts.** One concept is one idea a learner can use or
-   misuse: "context propagation", "connection pool sizing", "retry policy". Aim
-   for 25–80 for a medium system.
+   misuse: "context propagation", "connection pool sizing", "retry policy".
+   Size by core source (excluding tests and vendored code): under 10k lines,
+   15–30 concepts; 10k–100k lines, 30–60; larger, 50–80.
 4. [ ] **Score each concept** from 1 to 5 on:
    - **Frequency:** how often an engineer touches it in normal work.
    - **Blast radius:** how bad it is when someone gets it wrong.
@@ -35,16 +36,22 @@ tests, issue tracker or changelog if available, and the way it's deployed.
    incidents in phase 2.
 7. [ ] **Write the deliberate gaps.** Concepts you saw and chose not to teach,
    each with a reason (out of scope, deprecated, too rare, needs hardware...).
-   Nothing may be missed *by accident*.
+   Nothing may be missed *by accident*. Use the concept's **id** from the
+   Concepts table. Every concept with priority below 9 that you don't expect to
+   teach goes here now; phase 2's coverage check fails on any that is neither
+   taught nor listed.
 8. [ ] **Note the observable surface.** What can a checker read without
    trusting the learner? Process output, HTTP responses, database state, files,
    telemetry, metrics endpoints, logs, CLI exit codes. Phase 3 builds on this.
+   A library with no telemetry is observed through its API surface: return
+   values, exceptions, the requests it sends to a local test server, files it
+   writes. Use those as the "signal" for its failure modes.
 
 ## Exit criteria
 
-- `python tools/lint_artifacts.py course/concept-map.md` passes.
+- `python <skill>/tools/lint_artifacts.py course/concept-map.md` passes.
 - Every concept row has a score, a priority and at least one artifact citation.
-- `python tools/check_sources.py --repo <target> course/concept-map.md` finds every cited path.
+- `python <skill>/tools/check_sources.py --repo <target> course/concept-map.md` finds every cited path.
 - The deliberate-gaps section is present (it may say "none", with a reason).
 
 ## Common mistakes

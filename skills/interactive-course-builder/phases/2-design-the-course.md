@@ -23,7 +23,8 @@ skipped and the whole thing builds to realistic incidents.
    - **assumes**: concepts the learner should already know, so they can decide to skip
    - **sources**: the real artifacts this lesson is built on
    - what the learner produces, and what the checks will observe
-4. [ ] **Order each track by progression:**
+4. [ ] **Order each track by progression,** and record each lesson's stage in
+   the outline's `Stage` column (`happy`, `options`, `failure`, `judgment`, `capstone`):
    1. **Happy path:** use it correctly, see it work.
    2. **Shape and options:** the settings and variations people actually use.
    3. **Failure modes:** each high-blast-radius concept gets a lesson where
@@ -34,20 +35,25 @@ skipped and the whole thing builds to realistic incidents.
 5. [ ] **Design the capstone incidents.** 4–8 per course. Each has:
    - a **symptom brief** written the way people really report problems ("checkout spins, but not for everyone")
    - a **hidden fault** from the concept map's failure modes
+   - the **fault** ids that cause it (`Fault` column); phase 3 defines each one
    - the **signals** that reveal it, which must be the target system's own
-   - graded answers: **when** it started, **where** the cause is, **what** the mechanism is, and an **evidence** query or command
+     (for a library: its API surface, observed through the scenario)
+   - graded answers: **when** it started, **where** the cause is, **what** the
+     mechanism is, and **evidence**: a query, command or check against the
+     scenario, in whatever form the adapter can observe
    - one deliberately misleading symptom (the cause is not where it hurts)
 6. [ ] **Check coverage.** Every concept with priority ≥ 9 is taught in at least
-   one lesson. Everything else is taught or listed in the concept map's
-   deliberate gaps. Run `python tools/coverage.py course/concept-map.md course/outline.md`.
+   one lesson. Every concept with blast ≥ 3 is taught by a `failure` or `capstone` lesson. Everything else is taught or listed in the concept map's
+   deliberate gaps. Run `python <skill>/tools/coverage.py course/concept-map.md course/outline.md`.
 7. [ ] **Check skippability.** For each lesson ask: could someone open it
    directly, with nothing done before? If not, fold the dependency into its starter.
 
 ## Exit criteria
 
-- `python tools/lint_artifacts.py course/outline.md` and `python tools/coverage.py course/concept-map.md course/outline.md` pass.
-- Every lesson has kind, assumes, sources and a "checks observe" line.
-- At least one failure-mode lesson per high-blast-radius concept, and at least 4 incidents.
+- `python <skill>/tools/lint_artifacts.py course/outline.md` and `python <skill>/tools/coverage.py course/concept-map.md course/outline.md` pass.
+- Every lesson has kind, stage, assumes, sources and a "checks observe" line.
+- Every track has a `happy` lesson and a `failure` or `capstone` lesson; at
+  least 4 incidents, each naming its fault ids. (The tools check all of this.)
 
 ## Common mistakes
 

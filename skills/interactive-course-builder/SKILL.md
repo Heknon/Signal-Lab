@@ -77,14 +77,14 @@ Each prints one line per problem and exits non-zero on any error.
 |---|---|
 | `tools/lint_artifacts.py course/` | each phase artifact has every required section, filled, with no `{{placeholders}}`; plus per-artifact rules (score arithmetic, ≥ 4 incidents, reversible faults, spike output, ticked final UI pass) |
 | `tools/check_sources.py --repo <target> course/concept-map.md course/outline.md <lessons-dir>` | every cited path exists in the target repo; `path#Symbol` contains the symbol; `path:N` has N lines |
-| `tools/lint_lessons.py <lessons-dir>` | every lesson has front matter, `assumes`, `sources`, checks or questions, hints, a starter and a solution that differ and parse; no slop phrases or emoji |
-| `tools/coverage.py course/concept-map.md course/outline.md --lessons <lessons-dir>` | every concept with priority ≥ 9 is taught; the rest are taught or deliberate gaps; outline and lesson folders match |
+| `tools/lint_lessons.py <lessons-dir> --adapter course/adapter.md` | check types are ones the adapter defines; every lesson has front matter, `assumes`, `sources`, checks or questions, hints, a starter and a solution that differ and parse; no slop phrases or emoji |
+| `tools/coverage.py course/concept-map.md course/outline.md --lessons <lessons-dir>` | every concept with priority ≥ 9 is taught; every blast ≥ 3 concept has a `failure` or `capstone` lesson; the rest are taught or deliberate gaps; outline and lesson folders match (`--allow-missing` while lessons are still being written) |
 
 ## Worked example
 
 [`examples/signal-lab-ops/`](examples/signal-lab-ops) holds a filled
 `concept-map.md` and `outline.md` for a small course about this repository.
-All four tools pass on it. Read it before phase 1 to see the expected depth.
+All four tools pass on it with `--repo` set to this repository's root. Read it before phase 1 to see the expected depth.
 
 ## Reference implementation
 

@@ -22,6 +22,11 @@ Replace every `{{...}}` placeholder. See `references/adapter-template.md`.
 
 ## Check types
 
+These names are the only valid `type:` values in lesson checks
+(`lint_lessons.py --adapter` enforces it). Reuse names from
+`references/check-patterns.md` where they fit. Quiz-style lessons may use
+"none: graded from the answer key" as their execution path.
+
 | Type | Parameters | Passes when | Failure message example |
 |---|---|---|---|
 | {{span}} | {{where, count}} | {{a matching entity exists}} | {{"No span named X. Did you mean Y?"}} |
@@ -34,9 +39,12 @@ Replace every `{{...}}` placeholder. See `references/adapter-template.md`.
 
 ## Fault catalogue
 
+Every `Fault` id used by the outline's capstone incidents must appear here.
+The spike proves one fault; phase 6 proves the rest.
+
 | Fault | Parameters | Injected by | Removed by | Time limit | Evidence |
 |---|---|---|---|---|---|
-| {{slow dependency}} | {{latency_ms}} | `{{POST /_chaos}}` | `{{{"reset": true}}}` | {{TTL}} | `{{metric or log}}` |
+| `{{fault-id}}` | {{latency_ms}} | `{{POST /_chaos}}` | `{{{"reset": true}}}` | {{TTL}} | `{{metric or log}}` |
 
 ## Isolation
 

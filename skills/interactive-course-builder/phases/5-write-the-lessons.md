@@ -18,7 +18,7 @@ starter, solution and checks, all built on real artifacts of the target system.
    patterns. Each check:
    - observes behaviour, not source text
    - has a title phrased as a goal ("`checkout` carries `app.user.id`")
-   - fails with a message that says what was seen
+   - fails with a message that says what was seen, without giving away the fix
    - is tolerant of equivalent correct answers (different variable names,
      ordering, a different but equivalent query)
 4. [ ] **Write the starter** by breaking the solution in the way the lesson
@@ -38,7 +38,9 @@ starter, solution and checks, all built on real artifacts of the target system.
 
 ## Incident lessons, additionally
 
-- [ ] The brief states only the symptom, never the cause.
+- [ ] The brief (the lesson's prose) states only the symptom, never the cause.
+      Don't quote the faulty code or name the mechanism; sources are listed in
+      front matter, and hints lead there.
 - [ ] The fault timeline starts healthy, so "when did it start" is answerable.
 - [ ] Questions: start time (graded against the real fault start, with a
       tolerance), root cause, mechanism, and an evidence query or command
@@ -47,8 +49,8 @@ starter, solution and checks, all built on real artifacts of the target system.
 
 ## Exit criteria
 
-- `python tools/lint_lessons.py <lessons-dir>`, `python tools/check_sources.py --repo <target> <lessons-dir>` and
-  `python tools/coverage.py course/concept-map.md course/outline.md --lessons <lessons-dir>` pass.
+- `python <skill>/tools/lint_lessons.py <lessons-dir> --adapter course/adapter.md`, `python <skill>/tools/check_sources.py --repo <target> <lessons-dir>` and
+  `python <skill>/tools/coverage.py course/concept-map.md course/outline.md --lessons <lessons-dir>` pass.
 - Every lesson in the outline exists; nothing extra exists that isn't in the outline (update the outline first).
 - Each lesson has been run at least once with its solution and its starter.
 

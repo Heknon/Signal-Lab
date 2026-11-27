@@ -43,6 +43,9 @@ A check reads **observable behaviour** and returns `pass`, `fail` or
 
 ## Writing good failure messages
 
+Say what was seen and how far off it was, never what to type. "Status 404 was
+read as success" is good; "Call `raise_for_status()` first" gives the lesson away.
+
 | Situation | Message |
 |---|---|
 | nothing observed | "No spans were exported. Did the program record anything?" |

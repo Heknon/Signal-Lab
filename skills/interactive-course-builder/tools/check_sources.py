@@ -7,7 +7,8 @@ Reads citations from:
 
 Citation forms:
   path                 the file or directory must exist
-  path#Symbol          the file must exist and contain "Symbol" (for a.b.c, the last part "c")
+  path#Symbol          the file must define Symbol: a def/class/assignment in code, a key in YAML/JSON/TOML,
+                       a heading or the text itself in other files. Class.method needs both.
   path:120             the file must have at least 120 lines
   metric:/cmd:/key:/api:/doc:/url:   not a file; counted, not checked
 
@@ -62,9 +63,10 @@ def check(repo: Path, where: str, citation: str, rep: Report) -> bool:
         return True
     if symbol:
         text = target.read_text(encoding="utf-8", errors="replace")
-        needle = re.split(r"[.:]", symbol)[-1]
-        if needle not in text:
-            rep.error(where, f"`{citation}`: '{needle}' does not appear in {rel}")
+        missing = [part for part in re.split(r"[.:]", symbol) if part and not defines(target.suffix, text, part)]
+        if missing:
+            rep.error(where, f"`{citation}`: {rel} does not define '{missing[-1]}'"
+                      + (" (it is only used there, not defined)" if missing[-1] in text else ""))
             return False
     if line:
         n = sum(1 for _ in target.open(encoding="utf-8", errors="replace"))
@@ -72,6 +74,30 @@ def check(repo: Path, where: str, citation: str, rep: Report) -> bool:
             rep.error(where, f"`{citation}`: {rel} has only {n} lines")
             return False
     return True
+
+
+CODE = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rb", ".java", ".kt", ".rs", ".c", ".h", ".cpp", ".cs", ".php", ".sh"}
+CONFIG = {".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf", ".env", ".properties"}
+
+
+def defines(suffix: str, text: str, name: str) -> bool:
+    """True if the file defines `name` (not merely uses it)."""
+    n = re.escape(name)
+    if suffix in CODE:
+        patterns = [
+            rf"^\s*(async\s+)?(def|class|func|fn|function|interface|type|struct|enum|const|let|var)\s+{n}\b",
+            rf"^\s*(export\s+)?(default\s+)?(async\s+)?(function|class|const|let|var|type|interface)\s+{n}\b",
+            # assignment or annotated field; a line ending in "," is a function parameter, not a definition
+            rf"^\s*(self\.|this\.)?{n}\s*(:[^=\n]+)?=(?!=)(?![^\n]*,\s*$)",
+            rf"^\s*{n}\s*:(?![^\n]*,\s*$)",
+            rf"\bfunc\s+\([^)]*\)\s+{n}\b",                     # Go method
+            rf"^\s*(public|private|protected|static|\w+)\s.*\b{n}\s*\(",  # Java/C#-style method
+        ]
+    elif suffix in CONFIG:
+        patterns = [rf"^\s*-?\s*[\"']?{n}[\"']?\s*[:=]", rf"^\s*\[{n}\]"]
+    else:
+        return name in text
+    return any(re.search(p, text, re.M) for p in patterns)
 
 
 def _nearest(repo: Path, rel: str) -> str:

@@ -53,7 +53,7 @@ equivalent), and `course/platform.md` from [`templates/platform.md`](../template
 ## Exit criteria
 
 - One command starts the app; the smoke lesson fails with its starter and passes with its solution.
-- `python tools/lint_artifacts.py course/platform.md` passes: `course/platform.md` lists the start command, content folders, lesson kinds and check types.
+- `python <skill>/tools/lint_artifacts.py course/platform.md` passes: `course/platform.md` lists the start command, content folders, lesson kinds and check types.
 - The runner's isolation settings are written down in `platform.md`.
 
 ## Common mistakes

@@ -1,7 +1,7 @@
 # Concept map: operating the Signal Lab shop
 
 A worked example of a phase 1 artifact. It targets this repository, so the
-tools can check it: `python tools/check_sources.py --repo ../.. examples/signal-lab-ops/concept-map.md`.
+tools can check it: `python tools/check_sources.py --repo <root of this repository> examples/signal-lab-ops/concept-map.md`.
 
 ## Subject
 

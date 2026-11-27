@@ -17,7 +17,7 @@ from _common import PLACEHOLDER, Report, column, sections, split_list, tables  #
 
 REQUIRED = {
     "concept-map.md": ["Subject", "Inventory", "Concepts", "Failure modes", "Observable surface", "Deliberate gaps"],
-    "outline.md": ["Tracks", "Lessons", "Progression", "Capstone incidents", "Decisions"],
+    "outline.md": ["Tracks", "Lessons", "Capstone incidents", "Decisions"],
     "adapter.md": ["Learner outputs", "Execution", "Observable state", "Check types", "Scenario",
                    "Fault catalogue", "Isolation", "Spike"],
     "platform.md": ["Decision", "Start", "Content", "Lesson kinds", "Check types", "Runner isolation", "Smoke lesson"],
@@ -25,6 +25,7 @@ REQUIRED = {
     "ui-review.md": ["Coverage", "Rounds", "Final pass"],
 }
 KINDS = {"code", "config", "collector", "query", "quiz", "task", "experiment", "incident"}
+STAGES = ["happy", "options", "failure", "judgment", "capstone"]
 
 
 def lint(path: Path, rep: Report) -> None:
@@ -111,6 +112,11 @@ def outline(path: Path, secs: dict[str, str], rep: Report) -> None:
         kind = column(row, "kind").strip().lower()
         if kind not in KINDS:
             rep.error(where, f"kind '{kind}' not one of {sorted(KINDS)}")
+        stage = column(row, "stage").strip().lower()
+        if stage not in STAGES:
+            rep.error(where, f"stage '{stage}' not one of {STAGES}")
+        elif kind == "incident" and stage != "capstone":
+            rep.error(where, "incident lessons are stage capstone")
         minutes = column(row, "min")
         if not minutes.isdigit() or not 3 <= int(minutes) <= 15:
             rep.error(where, "minutes must be 3-15")
@@ -125,13 +131,31 @@ def outline(path: Path, secs: dict[str, str], rep: Report) -> None:
     incidents = _rows(secs.get("Capstone incidents", ""))
     if len(incidents) < 4:
         rep.error(str(path), f"{len(incidents)} capstone incidents; need at least 4")
+    by_track: dict[str, set[str]] = {}
+    for row in rows:
+        by_track.setdefault(column(row, "id").split("/")[0], set()).add(column(row, "stage").strip().lower())
+    for track, stages in by_track.items():
+        order = [s for s in STAGES if s in stages]
+        if "happy" not in stages:
+            rep.error(f"{path} track {track}", "no happy-path lesson")
+        if "failure" not in stages and "capstone" not in stages:
+            rep.error(f"{path} track {track}", "no failure-mode or capstone lesson")
     for row in incidents:
-        for col in ("symptom", "hidden fault", "misleading", "signals", "evidence"):
+        for col in ("symptom", "hidden fault", "fault", "misleading", "signals", "evidence"):
             if not column(row, col).strip():
                 rep.error(f"{path} incident {column(row, 'id')}", f"empty {col}")
 
 
 def adapter(path: Path, secs: dict[str, str], rep: Report) -> None:
+    faults = {column(r, "fault").replace("`", "").strip() for r in _rows(secs.get("Fault catalogue", ""))}
+    outline_path = path.with_name("outline.md")
+    if outline_path.exists():
+        osecs = sections(outline_path.read_text(encoding="utf-8"))
+        for row in _rows(osecs.get("Capstone incidents", "")):
+            used = [f.strip() for f in re.findall(r"`([^`]+)`", column(row, "fault"))] or [column(row, "fault").strip()]
+            for f in used:
+                if f and f not in faults:
+                    rep.error(f"{path} fault catalogue", f"incident {column(row, 'id')} uses fault '{f}', which is not in the catalogue")
     spike = secs.get("Spike", "")
     blocks = re.findall(r"```[^\n]*\n(.*?)```", spike, re.S)
     if len(blocks) < 2 or not all(b.strip() for b in blocks[:2]):

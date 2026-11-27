@@ -13,7 +13,7 @@ hints:
   - "{{Nearly the answer.}}"
 checks:
   - id: "{{short-id}}"
-    type: "{{span | trace | metric | log | output | exit | budget | query | backend}}"
+    type: "{{a type from course/adapter.md Check types}}"
     title: "{{Goal phrased as a fact, e.g. `checkout` carries `app.user.id`}}"
     where: {name: "{{entity}}"}
 ---
