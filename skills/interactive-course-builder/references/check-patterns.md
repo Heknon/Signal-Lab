@@ -27,19 +27,22 @@ A check reads **observable behaviour** and returns `pass`, `fail` or
 
 ## Pattern catalogue
 
+The id in brackets is a valid `type:` name; use it in `adapter.md` when the
+pattern fits, or define a subject-specific type (one word, `[a-z_.-]`).
+
 | Pattern | Use for | Parameters |
 |---|---|---|
-| **entity exists** | a span, row, file, resource, log record, metric exists with properties | `where: {name, kind, status, attributes: {k: v}}`, `count` |
-| **relationship** | parent/child, foreign key, call edge, ordering | `parent: <name>`, `includes: [...]`, `depth` |
-| **absence** | noise removed, PII gone, nothing leaked | `count: {max: 0}`, `attributes_absent: [...]` |
-| **shape** | types, units, buckets, schema | `unit`, `instrument`, `bounds`, `columns`, `type` |
-| **budget** | the right amount, not too much | `spans: {max}`, `series: {max}`, `logs: {max}`, `rows`, `bytes` |
-| **output** | stdout or response text | `contains`, `regex` |
-| **exit** | the program finished cleanly | (none) |
-| **query result** | a query answers correctly | `reference` (evaluated at the same instant; compare label sets and values within `tolerance`), or `expect: {rows, columns, top, value}` |
-| **external state** | something built in another UI | `verify: dashboard | alert_rule | ...` through that tool's API |
-| **outcome** | experiment held, rejected or aborted | read from the experiment engine |
-| **time** | when something started | compare with the recorded fault start, ± `tolerance_s` |
+| **entity exists** (`entity`) | a span, row, file, resource, log record, metric exists with properties | `where: {name, kind, status, attributes: {k: v}}`, `count` |
+| **relationship** (`relationship`) | parent/child, foreign key, call edge, ordering | `parent: <name>`, `includes: [...]`, `depth` |
+| **absence** (`absence`) | noise removed, PII gone, nothing leaked | `count: {max: 0}`, `attributes_absent: [...]` |
+| **shape** (`shape`) | types, units, buckets, schema | `unit`, `instrument`, `bounds`, `columns`, `type` |
+| **budget** (`budget`) | the right amount, not too much | `spans: {max}`, `series: {max}`, `logs: {max}`, `rows`, `bytes` |
+| **output** (`output`) | stdout or response text | `contains`, `regex` |
+| **exit** (`exit`) | the program finished cleanly | (none) |
+| **query result** (`query`) | a query answers correctly | `reference` (evaluated at the same instant; compare label sets and values within `tolerance`), or `expect: {rows, columns, top, value}` |
+| **external state** (`external`) | something built in another UI | `verify: dashboard | alert_rule | ...` through that tool's API |
+| **outcome** (`outcome`) | experiment held, rejected or aborted | read from the experiment engine |
+| **time** (`time`) | when something started | compare with the recorded fault start, ± `tolerance_s` |
 
 ## Writing good failure messages
 

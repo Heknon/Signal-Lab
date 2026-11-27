@@ -3,8 +3,9 @@
 **Goal:** know the target system well enough to decide what is worth teaching,
 grounded in its real code and configuration.
 
-**Read:** the target codebase or technology: source, configs, docs, examples,
-tests, issue tracker or changelog if available, and the way it's deployed.
+**Read:** `course/environment.md`, then the target codebase or technology:
+source, configs, docs, examples, tests, changelog, and the way it's deployed.
+Use only what is on disk; there is no issue tracker or web search.
 
 **Produce:** `course/concept-map.md`, from [`templates/concept-map.md`](../templates/concept-map.md).
 
@@ -16,16 +17,22 @@ tests, issue tracker or changelog if available, and the way it's deployed.
 2. [ ] **Find where engineers spend time.** Use evidence in this order:
    - files that change most often (`git log --format= --name-only | sort | uniq -c | sort -rn | head -50`)
    - the most-used config keys and flags in examples, tests and docs
-   - questions and bugs in issues, FAQs and troubleshooting docs
+   - bugs and confusion, offline: commit subjects with "fix", "regression",
+     "revert" or "clarify" (`git log --format=%s | grep -iE 'fix|regress|revert|clarif'`);
+     changelog entries; regression tests; `FIXME`, `XXX` and "note:" comments;
+     warnings and "common mistakes" in the docs folder; FAQ or troubleshooting pages
    - the "getting started" path in the official docs
 3. [ ] **List candidate concepts.** One concept is one idea a learner can use or
    misuse: "context propagation", "connection pool sizing", "retry policy".
-   Size by core source (excluding tests and vendored code): under 10k lines,
+   Size by core source (all of the main package, excluding tests, docs and
+   vendored code; `environment.md` shows the line count): under 10k lines,
    15–30 concepts; 10k–100k lines, 30–60; larger, 50–80.
 4. [ ] **Score each concept** from 1 to 5 on:
    - **Frequency:** how often an engineer touches it in normal work.
    - **Blast radius:** how bad it is when someone gets it wrong.
-   - **Confusion:** how often newcomers misunderstand it (cite the evidence: an issue, a doc warning, a common bug).
+   - **Confusion:** how often newcomers misunderstand it. Cite local evidence:
+     a commit, changelog entry, regression test, doc warning or code comment.
+     No evidence means confusion ≤ 2.
 
    Priority = frequency + blast radius + confusion (3–15).
 5. [ ] **Cite artifacts for every concept.** At least one real path, symbol,
@@ -33,7 +40,9 @@ tests, issue tracker or changelog if available, and the way it's deployed.
    concept is either not part of this system or you haven't looked enough.
 6. [ ] **Record failure modes** for each concept with blast radius ≥ 3: what
    breaks, what the symptom looks like, and which signal shows it. These become
-   incidents in phase 2.
+   incidents in phase 2. **Confirm each one** by reading the code path or
+   running a few lines against the installed target; memory of how a library
+   behaves is often wrong.
 7. [ ] **Write the deliberate gaps.** Concepts you saw and chose not to teach,
    each with a reason (out of scope, deprecated, too rare, needs hardware...).
    Nothing may be missed *by accident*. Use the concept's **id** from the

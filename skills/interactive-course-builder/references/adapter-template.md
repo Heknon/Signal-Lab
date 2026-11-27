@@ -22,6 +22,20 @@ the pieces below.
 | **Scenario** | a live system for queries, experiments and incidents | each service exposes `GET /_stats` and `POST /_chaos`, plus `POST /_load` on the traffic generator |
 | **Fault catalogue** | named, parameterised, reversible faults | `{reset: true}` clears everything |
 
+## Subjects that are not services
+
+A library, CLI or compiler runs once per submission; there is no long-lived
+system to break. Map the concepts like this:
+
+| Concept | For a service | For a one-shot process (library, CLI) |
+|---|---|---|
+| Scenario | running services plus a traffic generator | a fixture the run uses: a local test server, sample files, env vars, a temp repo |
+| Fault | a chaos API call | a fixture setting: a slow or failing test server, a bad env var, a corrupt input file |
+| Time limit | a TTL on the fault | one run; the fixture is rebuilt for the next |
+| Reset | `{"reset": true}` | delete and recreate the fixture |
+| Incident timeline | faults applied at offsets during live traffic | a sequence of runs ("deploys") with the fault switched on from run N; "when" is the run or commit that introduced it |
+| Evidence | a query against a backend | a command against the fixture's record (server log, output files, exit codes) |
+
 ## Plugin folder layout (Signal Lab conventions)
 
 ```text

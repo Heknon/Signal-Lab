@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import PLACEHOLDER, Report, column, sections, split_list, tables  # noqa: E402
 
 REQUIRED = {
+    "environment.md": ["Network", "Target", "Tools", "Python modules", "Container images", "Package sources", "Decisions"],
     "concept-map.md": ["Subject", "Inventory", "Concepts", "Failure modes", "Observable surface", "Deliberate gaps"],
     "outline.md": ["Tracks", "Lessons", "Capstone incidents", "Decisions"],
     "adapter.md": ["Learner outputs", "Execution", "Observable state", "Check types", "Scenario",
@@ -136,7 +137,7 @@ def outline(path: Path, secs: dict[str, str], rep: Report) -> None:
         by_track.setdefault(column(row, "id").split("/")[0], set()).add(column(row, "stage").strip().lower())
     for track, stages in by_track.items():
         order = [s for s in STAGES if s in stages]
-        if "happy" not in stages:
+        if "happy" not in stages and stages != {"capstone"}:
             rep.error(f"{path} track {track}", "no happy-path lesson")
         if "failure" not in stages and "capstone" not in stages:
             rep.error(f"{path} track {track}", "no failure-mode or capstone lesson")

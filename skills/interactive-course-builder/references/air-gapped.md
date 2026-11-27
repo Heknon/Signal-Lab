@@ -1,8 +1,42 @@
 # Air-gapped operation
 
-Assume no network at runtime, and possibly none at build time on the
-learner's side. Everything the course needs is pre-installed, vendored or
-packaged.
+Two things must work without a network: **building the course** (the model
+following this skill) and **running it** (learners). Everything is
+pre-installed, vendored or packaged.
+
+## Building the course offline
+
+The skill is self-contained: phases, references, templates and tools are all
+in this folder, and the tools use only the Python standard library. Nothing in
+it requires a web search, online docs or a package download.
+
+1. **Start with phase 0.** `tools/preflight.py` lists what is installed:
+   runtimes, Python modules, Node/Bun, Docker images, browsers, and local
+   package sources. Plan only with what it lists.
+2. **Install only from local sources,** and only if the report shows one:
+
+   | Source | Command |
+   |---|---|
+   | a wheelhouse folder | `pip install --no-index --find-links wheelhouse/ -r requirements.txt` |
+   | an internal PyPI mirror (in `pip.conf` or `PIP_INDEX_URL`) | `pip install -r requirements.txt` (the mirror is already configured) |
+   | the Bun or npm cache | `bun install --frozen-lockfile --offline` / `npm ci --offline` |
+   | loaded images | `docker compose up -d --no-build` or `docker build --pull=false` |
+   | a saved image archive | `docker load < images.tar.gz` |
+   | the Go module cache | `GOFLAGS=-mod=mod GOPROXY=off go build ./...` |
+
+3. **Research offline.** Evidence for phase 1 comes from the target's git
+   history, changelog, tests, docs folder and code comments (see phase 1).
+   The UI checklist in [UI rules](ui-rules.md) already contains the AI-slop
+   research; don't search for more.
+4. **Screenshots offline.** `tools/screenshots.py` uses a locally installed
+   Playwright (Python or Node) or a Chromium binary, with Chrome's update and
+   telemetry traffic switched off. It never downloads a browser.
+5. **When something is missing,** pick an installed alternative (SQLite instead
+   of Postgres, subprocesses instead of containers, the Chromium fallback
+   instead of Playwright) and write the trade-off in `environment.md` and the
+   verification report. Don't stop, and don't download.
+
+## Running the course offline
 
 ## Rules
 
@@ -44,6 +78,16 @@ For Kubernetes, push the saved images to the internal registry and set the
 chart's `global.imageRegistry`.
 
 ## Verify it
+
+Scripts and tools: run them in a network namespace with no interfaces. A
+script that starts a local server needs loopback up first; `tools/lo_up.py`
+does that without the `ip` command:
+
+```bash
+unshare -rn bash -c 'python3 <skill>/tools/lo_up.py && python3 scripts/test_lessons.py'
+```
+
+The stack:
 
 1. Start the stack.
 2. Block outbound traffic: run the stack on an internal-only network

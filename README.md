@@ -228,8 +228,9 @@ every check type, experiments and incidents, backend adapters and scenarios.
 
 To build a course like this one for another codebase or technology, use the
 [interactive-course-builder skill](skills/interactive-course-builder/SKILL.md).
-It is a portable folder: seven phases, each with a checklist and a required
-artifact, plus references, templates and standard-library lint tools.
+It is a portable folder that works without a network: an environment check,
+seven phases with a checklist and a required artifact each, references,
+templates, and standard-library tools for linting and screenshots.
 
 ## Testing
 

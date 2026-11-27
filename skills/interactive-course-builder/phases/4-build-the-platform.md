@@ -4,7 +4,7 @@
 sandbox, grades it with the check engine, and injects faults: everything
 `adapter.md` describes.
 
-**Read:** `course/adapter.md`, [platform](../references/platform.md),
+**Read:** `course/adapter.md`, `course/environment.md`, [platform](../references/platform.md),
 [UI rules](../references/ui-rules.md), [team mode](../references/team-mode.md),
 [air-gapped operation](../references/air-gapped.md).
 
@@ -45,8 +45,12 @@ equivalent), and `course/platform.md` from [`templates/platform.md`](../template
 9. [ ] **Packaging.** One command starts everything with the default
    components. Optional heavy components are opt-in. Provide a Helm chart or
    equivalent if the audience deploys to Kubernetes. Pin every version.
-10. [ ] **Air-gapped build.** Nothing fetched at runtime: fonts, scripts, editor
-    language packs, plugins and images are all local ([air-gapped operation](../references/air-gapped.md)).
+10. [ ] **Air-gapped build.** Build only from what `environment.md` lists:
+    installed packages, a local mirror or cache, loaded images. Nothing fetched
+    at runtime either: fonts, scripts, editor language packs, plugins and
+    images are all local ([air-gapped operation](../references/air-gapped.md)).
+    If a dependency is missing, pick an installed alternative and record it in
+    `platform.md`; don't download it.
 11. [ ] **Smoke test.** Write one trivial lesson end to end (starter fails,
     solution passes) before writing the rest.
 

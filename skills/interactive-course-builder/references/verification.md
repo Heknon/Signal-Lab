@@ -14,7 +14,7 @@ verified", and the report says why.
 | Experiments | each runs to the end; the outcome question is graded from the real result | start through the API, poll until done, answer the outcome question |
 | Platform | check engine, timeline engine (including abort and cleanup), accounts, adapters | unit tests; accounts tests also against the real database |
 | Packaging | clean image build; start with defaults; start with optional components; chart lint and render | CI jobs |
-| Air gap | the stack works with outbound network blocked | see [air-gapped](air-gapped.md) |
+| Air gap | tools, suites and the stack work with the network blocked | `unshare -rn` for scripts, an internal Compose network for the stack; see [air-gapped](air-gapped.md) |
 | UI | no horizontal overflow at 390/768/1024/1280/1440; deslop checklist clean | screenshot script ([phase 7](../phases/7-review-the-ui.md)) |
 
 ## Rules

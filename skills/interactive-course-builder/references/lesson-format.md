@@ -44,6 +44,7 @@ sources:                                   # REQUIRED: real artifacts in the tar
   - config/defaults.yaml#database.pool_size
 runtime:                                   # code/config lessons; how the runner executes it
   timeout: 20                              #   seconds before the run is killed
+  args: ["deploy", "--dry-run"]            #   command-line arguments for the learner's program
   env: {POOL_SIZE: "2"}                    #   extra environment variables for this lesson
 hints:                                     # 2-3, from "where to look" to nearly the answer
   - Look at how long requests wait before they get a connection.
@@ -59,7 +60,7 @@ Kind-specific blocks:
 | `query` | `query: {backend, language, range_s, examples: [{label, query}]}` |
 | `quiz` | `quiz: {questions: [...]}` (see Questions below) |
 | `task` | `tools: [<links to the UI>]`, checks of type `backend` verified through an API |
-| `config` | `filename`, plus `traffic.*` that runs through the learner's config |
+| `config` | `filename`, plus `traffic.*` that runs through the learner's config (Signal Lab calls this kind `collector`) |
 | `experiment` | `experiment: {hypothesis, steady_state: {query, threshold, abort_at, direction}, baseline_s, inject, duration_s, recovery_s}`, plus `quiz: {questions: [...]}` |
 | `incident` | `incident: {duration_s, timeline: [{at, set, load, fault: true}]}`, plus `quiz: {questions: [...]}` |
 
@@ -109,9 +110,13 @@ quiz:
       expect: {top: {service_name: payments}}
 ```
 
-| Kind | Graded against |
+Set `kind:` only for `time`, `outcome` and `query`. Without `kind`, a question
+with `options` is multiple choice, and one with `input: text` (and no
+options) takes a typed answer.
+
+| Question | Graded against |
 |---|---|
-| options (single or `multiple: true`) | the answer key |
+| `options` (single or `multiple: true`) | the answer key |
 | `input: text` | the answer key, case-insensitive |
 | `time` | the real start of the fault, within `tolerance_s` |
 | `outcome` | what the experiment actually did: `held`, `rejected` or `aborted` |

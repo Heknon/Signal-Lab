@@ -31,7 +31,7 @@ def citations_from_markdown(path: Path) -> list[tuple[str, str]]:
     for table in tables(path.read_text(encoding="utf-8")):
         for row in table:
             for header, cell in row.items():
-                if header.startswith(("artifact", "source")):
+                if header in ("artifacts", "sources"):  # not "source" (e.g. the Observable surface table)
                     out += [(f"{path}", c.strip()) for c in BACKTICK.findall(cell)]
     return out
 

@@ -14,17 +14,18 @@ Given access to a codebase or a technology, produce a **complete course** that i
 - **verified end to end**: every solution passes, every starter fails, every
   injected fault produces its evidence, all by script
 
-The work is split into **seven phases**. Each phase has a checklist and
+The work is split into **phase 0 plus seven phases**. Each phase has a checklist and
 produces one **required artifact**. The next phase starts by reading that
 artifact. **Never start a phase until the previous phase's exit criteria are
 met.** If you are unsure, re-read the phase file; don't improvise.
 
 | # | Phase | Read | Produce |
 |---|---|---|---|
-| 1 | [Map the subject](phases/1-map-the-subject.md) | the target system | `course/concept-map.md` |
+| 0 | [Check the environment](phases/0-check-the-environment.md) | this machine | `course/environment.md` |
+| 1 | [Map the subject](phases/1-map-the-subject.md) | the target system, `environment.md` | `course/concept-map.md` |
 | 2 | [Design the course](phases/2-design-the-course.md) | `concept-map.md` | `course/outline.md` |
 | 3 | [Define the subject adapter](phases/3-define-the-adapter.md) | `outline.md` | `course/adapter.md` |
-| 4 | [Build the platform](phases/4-build-the-platform.md) | `adapter.md` | a running app + `course/platform.md` |
+| 4 | [Build the platform](phases/4-build-the-platform.md) | `adapter.md`, `environment.md` | a running app + `course/platform.md` |
 | 5 | [Write the lessons](phases/5-write-the-lessons.md) | `outline.md`, `adapter.md`, `platform.md` | lesson folders |
 | 6 | [Verify](phases/6-verify.md) | everything | `course/verification-report.md` |
 | 7 | [Review the UI](phases/7-review-the-ui.md) | the running app | `course/ui-review.md` + screenshots |
@@ -47,8 +48,12 @@ Templates for each are in [`templates/`](templates).
    lesson. Every lesson ships complete starter material.
 5. **Prove it, don't claim it.** Nothing is "done" until a script demonstrates it.
    Write down anything you could not verify, and say why.
-6. **Assume no network.** Dependencies, images, fonts and plugins are
-   pre-installed or vendored. See [air-gapped operation](references/air-gapped.md).
+6. **Assume no network, while building and while running.** Everything this
+   skill needs is in this folder: the UI checklist, patterns and templates are
+   complete, so never search the web or fetch docs. Use only what phase 0 found
+   installed or in a local package cache; never `pip install`, `npm install`
+   or `docker pull` from the internet. The finished course runs with no
+   network too. See [air-gapped operation](references/air-gapped.md).
 7. **Stop and ask** only when the subject itself is ambiguous: two systems with
    the same name, or no access to the code. Otherwise decide, write the
    decision in the artifact, and keep going.
@@ -64,7 +69,7 @@ Templates for each are in [`templates/`](templates).
 | [Verification](references/verification.md) | 6 |
 | [UI rules and AI-slop anti-patterns](references/ui-rules.md) | 4, 7 |
 | [Multi-user and team mode](references/team-mode.md) | 4 |
-| [Air-gapped operation](references/air-gapped.md) | 4, 6 |
+| [Air-gapped operation](references/air-gapped.md) | 0, 4, 6 |
 
 ## Tools
 
@@ -75,10 +80,16 @@ Each prints one line per problem and exits non-zero on any error.
 
 | Command | What it checks |
 |---|---|
-| `tools/lint_artifacts.py course/` | each phase artifact has every required section, filled, with no `{{placeholders}}`; plus per-artifact rules (score arithmetic, ≥ 4 incidents, reversible faults, spike output, ticked final UI pass) |
+| `tools/preflight.py --target <target>` | writes `course/environment.md`: runtimes, build tools, loaded images, browsers, local package sources; no network use |
+| `tools/lint_artifacts.py course/` (or one file) | each phase artifact has every required section, filled, with no `{{placeholders}}`; plus per-artifact rules (score arithmetic, ≥ 4 incidents, reversible faults, spike output, ticked final UI pass) |
 | `tools/check_sources.py --repo <target> course/concept-map.md course/outline.md <lessons-dir>` | every cited path exists in the target repo; `path#Symbol` contains the symbol; `path:N` has N lines |
 | `tools/lint_lessons.py <lessons-dir> --adapter course/adapter.md` | check types are ones the adapter defines; every lesson has front matter, `assumes`, `sources`, checks or questions, hints, a starter and a solution that differ and parse; no slop phrases or emoji |
 | `tools/coverage.py course/concept-map.md course/outline.md --lessons <lessons-dir>` | every concept with priority ≥ 9 is taught; every blast ≥ 3 concept has a `failure` or `capstone` lesson; the rest are taught or deliberate gaps; outline and lesson folders match (`--allow-missing` while lessons are still being written) |
+
+| `tools/screenshots.py --base <url> --page name=/path ...` | screenshots at every width and theme, and horizontal overflow per page; uses a local Playwright or Chromium, never downloads one |
+
+The tools need no network. `tools/` was verified by running every tool inside
+a network namespace with no interfaces (`unshare -rn`).
 
 ## Worked example
 

@@ -3,7 +3,8 @@
 **Goal:** a clean, purposeful interface that works on phones, tablets and
 desktops, free of AI-slop patterns.
 
-**Read:** [UI rules](../references/ui-rules.md). Have the app running with
+**Read:** [UI rules](../references/ui-rules.md); its checklist is complete, so don't
+search the web for more. Have the app running with
 real data: some progress, a lesson that has been run, a finished experiment.
 
 **Produce:** `course/ui-review.md` from [`templates/ui-review.md`](../templates/ui-review.md) (findings, fixes, final pass) and
@@ -13,10 +14,14 @@ screenshots in `course/screenshots/`.
 
 1. [ ] **Screenshot every screen** at **390, 768, 1024, 1280 and 1440 px** wide, in
    dark and light themes: course map, each lesson kind's page (after a run),
-   the stack/plugins page, any drawer or palette, sign-in, admin pages. Use a
-   headless browser script, and commit it.
-2. [ ] **Measure overflow.** For each screenshot, record
-   `document.documentElement.scrollWidth - innerWidth`. Anything above 0 is a defect.
+   the stack/plugins page, any drawer or palette, sign-in, admin pages. Use
+   `python <skill>/tools/screenshots.py --base <url> --page name=/path ...`; it
+   uses a locally installed Playwright or Chromium and never downloads one. If
+   `environment.md` lists no browser, record phase 7 as not verified.
+2. [ ] **Measure overflow.** `screenshots.py` prints
+   `scrollWidth - innerWidth` per screenshot (with Playwright). Anything above 0
+   is a defect. With only the Chromium fallback, overflow isn't measured: check
+   each screenshot for clipped content and say so in `ui-review.md`.
 3. [ ] **Run the deslop checklist** in [UI rules](../references/ui-rules.md)
    against every screen. Write each finding as: screen, pattern, fix.
 4. [ ] **Fix and re-shoot.** Repeat steps 1–3 until a full pass finds nothing.

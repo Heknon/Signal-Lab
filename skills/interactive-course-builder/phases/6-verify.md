@@ -36,9 +36,12 @@ plus the scripts that generated it, committed with the course.
    deployment chart.
 8. [ ] **Air-gap test.** Start the stack with outbound network blocked and
    repeat a few lessons ([air-gapped operation](../references/air-gapped.md)).
-9. [ ] **Report.** Fill the report: commands run, results, failures fixed (with
+9. [ ] **Offline scripts.** Run the static tools and the lesson and incident
+   suites with networking disabled: `unshare -rn bash -c 'python3 <skill>/tools/lo_up.py && ...'`.
+   Anything that fails only offline is a defect.
+10. [ ] **Report.** Fill the report: commands run, results, failures fixed (with
    what was wrong), and an explicit **not verified** list with the reason for each.
-10. [ ] **Automate.** Put steps 1, 2, 4, 6 and 7 into CI.
+11. [ ] **Automate.** Put steps 1, 2, 4, 6 and 7 into CI.
 
 ## Exit criteria
 
