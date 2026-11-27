@@ -38,6 +38,12 @@ services:
       SIGNAL_LAB_COLLECTOR_CONFIGS: ${COLLECTOR_CONFIGS}
       SIGNAL_LAB_SCENARIOS: shop
       SIGNAL_LAB_RELOAD: "true"
+      SIGNAL_LAB_DATABASE_URL: postgresql://signallab:${POSTGRES_PASSWORD:-signallab}@postgres:5432/signallab
+      # open = no login (your own machine); accounts = sign-in, per-person progress
+      SIGNAL_LAB_AUTH: ${SIGNAL_LAB_AUTH:-open}
+      SIGNAL_LAB_SIGNUP: ${SIGNAL_LAB_SIGNUP:-open}
+      SIGNAL_LAB_ADMIN_USERNAME: ${SIGNAL_LAB_ADMIN_USERNAME:-}
+      SIGNAL_LAB_ADMIN_PASSWORD: ${SIGNAL_LAB_ADMIN_PASSWORD:-}
       SHOP_STOREFRONT_URL: http://storefront:8080
       SHOP_CHECKOUT_URL: http://checkout:8080
       SHOP_INVENTORY_URL: http://inventory:8080
@@ -47,6 +53,8 @@ services:
       # Mounted so lesson and plugin edits show up without a rebuild.
       - ./plugins:/app/plugins:ro
       - ./deploy/collector:/app/deploy/collector:ro
+    depends_on:
+      postgres: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 10s
@@ -67,6 +75,19 @@ services:
     pids_limit: 256
     mem_limit: 1g
     cpus: 1.5
+    restart: unless-stopped
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    environment:
+      POSTGRES_USER: signallab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signallab}
+      POSTGRES_DB: signallab
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signallab -d signallab"]
+      interval: 5s
+      retries: 20
     restart: unless-stopped
 
   collector:
@@ -95,3 +116,6 @@ services:
   loadgen:
     <<: *shop
     environment: {<<: *shop-env, SHOP_SERVICE: loadgen, OTEL_SERVICE_NAME: loadgen, SHOP_LOADGEN_RPS: "2"}
+
+volumes:
+  pg-data:

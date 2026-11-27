@@ -19,7 +19,7 @@ export interface Backend {
   path?: string;
 }
 
-export interface ScenarioService { id: string; title: string; description: string; calls: string[]; role: string; online?: boolean; stats?: ServiceStats | null }
+export interface ScenarioService { id: string; title: string; description: string; calls: string[]; role: string; online?: boolean; stats?: ServiceStats | null; changed?: { by: string; at: number; expires: number | null } }
 export interface ServiceStats { chaos: { latency_ms: number; error_rate: number }; requests: number; errors: number; p50_ms: number | null; p95_ms: number | null; rps?: number }
 export interface Scenario { id: string; title: string; description: string; services: ScenarioService[]; runner_env: string[] }
 
@@ -115,12 +115,21 @@ export interface QueryResult { columns: string[]; rows: unknown[][]; series: { n
 export interface CollectorInfo { files: { name: string; path: string; content: string }[]; pipelines: Record<string, { receivers?: string[]; processors?: string[]; exporters?: string[] }>; components: Record<string, string[]> }
 export interface PluginsInfo { backends: Backend[]; lesson_packs: { id: string; title: string; description: string; lessons: number; requires: Pack["requires"]; path: string }[]; scenarios: (Scenario & { path: string })[]; check_types: string[]; errors: string[] }
 
+export interface User { id: string; username: string; display_name: string; role: "admin" | "learner" }
+export interface Me { auth: "open" | "accounts"; user: User | null; signup: boolean; storage: string; scenario_control: "everyone" | "admins" }
+export interface AdminUser extends User { created: number; last_seen: number | null; done: number; known: number; runs: number; last_lesson: string | null }
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { detail = (await res.json()).detail ?? detail; } catch { /* not json */ }
-    throw new Error(detail);
+    if (res.status === 401) window.dispatchEvent(new Event("sl:unauthorized"));
+    throw new ApiError(detail, res.status);
   }
   return res.json() as Promise<T>;
 }
@@ -128,6 +137,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
+  me: () => request<Me>("/api/me"),
+  login: (username: string, password: string) => post<{ user: User }>("/api/auth/login", { username, password }),
+  signup: (username: string, password: string, display_name?: string) => post<{ user: User }>("/api/auth/signup", { username, password, display_name }),
+  logout: () => post("/api/auth/logout"),
+  adminUsers: () => request<AdminUser[]>("/api/admin/users"),
+  adminCreate: (username: string, password: string, role: string) => post<User>("/api/admin/users", { username, password, role }),
+  adminPatch: (id: string, body: { role?: string; password?: string }) => request(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  adminDelete: (id: string) => request(`/api/admin/users/${id}`, { method: "DELETE" }),
   meta: () => request<Meta>("/api/meta"),
   health: () => request<Health>("/api/health"),
   course: () => request<Pack[]>("/api/course"),

@@ -17,8 +17,9 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, checks, otlp, runner
+from . import __version__, auth, checks, otlp, runner
 from .config import Settings
+from .db import create_db
 from .plugins import Registry
 from .store import RUN_ATTR, Run, Store
 
@@ -67,7 +68,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     health_cache: dict[str, Any] = {"t": 0.0, "value": None}
 
     app = FastAPI(title="Signal Lab", version=__version__)
-    app.state.settings, app.state.registry, app.state.store = settings, registry, store
+    db = create_db(settings.database_url)
+    app.state.settings, app.state.registry, app.state.store, app.state.db = settings, registry, store, db
+    auth.install(app, settings, db)
+    # Who changed the shared scenario, and when lesson-applied faults expire.
+    scenario_changes: dict[str, dict] = {}
 
     for err in registry.errors:
         log.error("plugin error: %s", err)
@@ -144,6 +149,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         run.checks = checks.evaluate(lesson_checks, run.telemetry(), ctx)
         run.status = "done" if run.exit_code == 0 else "error"
         run.emit("status")
+        try:
+            await db.save_run(run.user_id, run.summary() | {"code": run.code})
+        except Exception:
+            log.exception("could not save run %s", run.id)
         asyncio.create_task(confirm_backends(run))
 
     async def confirm_backends(run: Run) -> None:
@@ -324,29 +333,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     # ------------------------------------------------------------ runs
+    def own_run(run_id: str, request: Request) -> Run:
+        run = store.get(run_id)
+        user = getattr(request.state, "user", None)
+        if not run or (user and run.user_id not in (None, user.id) and user.role != "admin"):
+            raise HTTPException(404, "Unknown run")
+        return run
+
     @app.post("/api/runs")
-    async def create_run(req: RunRequest) -> dict:
+    async def create_run(req: RunRequest, request: Request) -> dict:
         if not settings.runs_enabled:
             raise HTTPException(403, "Code execution is disabled on this deployment.")
         lesson = lesson_or_404(req.lesson)
         if len(req.code) > 100_000:
             raise HTTPException(413, "Code is too large.")
-        run = store.create(lesson.id, req.code)
+        user = request.state.user
+        if settings.auth == "accounts" and store.active_for(user.id):
+            raise HTTPException(429, "Your previous run is still going. Wait for it to finish.")
+        run = store.create(lesson.id, req.code, user.id)
         asyncio.create_task(drive(run, lesson))
         return run.summary()
 
     @app.get("/api/runs/{run_id}")
-    async def get_run(run_id: str) -> dict:
-        run = store.get(run_id)
-        if not run:
-            raise HTTPException(404, "Unknown run")
-        return run.snapshot()
+    async def get_run(run_id: str, request: Request) -> dict:
+        return own_run(run_id, request).snapshot()
 
     @app.get("/api/runs/{run_id}/events")
     async def run_events(run_id: str, request: Request):
-        run = store.get(run_id)
-        if not run:
-            raise HTTPException(404, "Unknown run")
+        run = own_run(run_id, request)
 
         async def stream():
             q = run.subscribe()
@@ -557,17 +571,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return {k: v for k, v in svc.items() if k != "url"} | {"online": False, "stats": None}
 
         services = await asyncio.gather(*(one(svc) for svc in s.services()))
+        for svc in services:
+            if svc["id"] in scenario_changes:
+                svc["changed"] = scenario_changes[svc["id"]]
         return s.public() | {"services": services}
 
     @app.post("/api/scenario/services/{service_id}/chaos")
-    async def set_chaos(service_id: str, req: ChaosRequest) -> dict:
+    async def set_chaos(service_id: str, req: ChaosRequest, ttl_s: float | None = None) -> dict:
         s = scenario_or_404()
         svc = next((x for x in s.services() if x["id"] == service_id), None)
         if not svc:
             raise HTTPException(404, "Unknown service")
         try:
             r = await http.post(svc["url"].rstrip("/") + "/_chaos", json=req.model_dump(exclude_none=True))
-            return r.json()
+            state = r.json()
+            user = auth.current_user.get()
+            active = bool(state.get("latency_ms") or state.get("error_rate"))
+            if active:
+                scenario_changes[service_id] = {"by": user.display_name if user else "lab", "at": time.time(), "expires": time.time() + ttl_s if ttl_s else None}
+            else:
+                scenario_changes.pop(service_id, None)
+            return state
         except httpx.HTTPError as e:
             raise HTTPException(502, f"{service_id} is unreachable: {type(e).__name__}")
 
@@ -583,9 +607,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except httpx.HTTPError as e:
             raise HTTPException(502, f"Load generator unreachable: {type(e).__name__}")
 
+    async def expire_faults() -> None:
+        """Clear faults that lessons injected once their time is up, so a shared lab heals itself."""
+        while True:
+            await asyncio.sleep(10)
+            now = time.time()
+            for service_id, change in list(scenario_changes.items()):
+                if change.get("expires") and change["expires"] < now:
+                    try:
+                        await set_chaos(service_id, ChaosRequest(latency_ms=0, error_rate=0))
+                        log.info("fault on %s expired", service_id)
+                    except HTTPException:
+                        scenario_changes.pop(service_id, None)
+
+    @app.on_event("startup")
+    async def _start_expiry() -> None:
+        if registry.scenario():
+            asyncio.create_task(expire_faults())
+
     @app.post("/api/scenario/reset")
     async def reset_scenario() -> dict:
         s = scenario_or_404()
+        scenario_changes.clear()
         for svc in s.services():
             if svc["role"] != "loadgen":
                 try:
@@ -607,7 +650,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await reset_scenario()
         for service_id, chaos in (spec.get("chaos") or {}).items():
             try:
-                await set_chaos(service_id, ChaosRequest(**chaos))
+                await set_chaos(service_id, ChaosRequest(**chaos), ttl_s=settings.fault_ttl_s)
                 applied.append(service_id)
             except HTTPException:
                 pass

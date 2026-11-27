@@ -57,7 +57,14 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   const [logSpan, setLogSpan] = useState<string | null>(null);
   const backends = meta?.backends ?? [];
 
-  useEffect(() => { setCode(drafts.get(lesson.id) ?? starter); setTab("console"); }, [lesson.id, starter]);
+  useEffect(() => {
+    setCode(drafts.get(lesson.id) ?? starter);
+    setTab("console");
+    let live = true;
+    // The server copy wins: it follows you across browsers.
+    drafts.fetch(lesson.id).then((remote) => { if (live && remote != null) setCode(remote); });
+    return () => { live = false; };
+  }, [lesson.id, starter]);
   useEffect(() => { onChecks(run?.checks ?? [], run); }, [run, onChecks]);
 
   // Follow the run: console while it executes, then the most relevant signal.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronRight, ExternalLink, FlaskConical, Layers, Moon, PanelLeft, Search, Sun, Monitor } from "lucide-react";
 import { stackStatus, useLab } from "../context";
+import { useAuth } from "../auth";
 import { modKey } from "../lib/hooks";
 import { BackendLogo, useClickOutside } from "./ui";
 
@@ -81,8 +82,28 @@ export default function TopBar({ crumbs, onToggleSidebar }: { crumbs?: { label: 
         {loc.pathname !== "/stack" && (
           <Link to="/stack" className="icon-btn hide-xs" title="Stack & plugins" aria-label="Stack and plugins"><Layers /></Link>
         )}
+        <UserMenu />
       </div>
     </header>
+  );
+}
+
+function UserMenu() {
+  const { me, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside<HTMLDivElement>(open, () => setOpen(false));
+  if (!me?.user || me.auth === "open") return null;
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button className="btn btn-ghost btn-sm user-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>{me.user.display_name}</button>
+      {open && (
+        <div className="popover menu" style={{ minWidth: 180 }}>
+          <div className="menu-head">{me.user.username}<span className="subtle"> · {me.user.role}</span></div>
+          {me.user.role === "admin" && <Link className="menu-item" to="/admin" onClick={() => setOpen(false)}>People</Link>}
+          <button className="menu-item" onClick={() => void signOut()}>Sign out</button>
+        </div>
+      )}
+    </div>
   );
 }
 

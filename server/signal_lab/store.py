@@ -34,6 +34,7 @@ class Run:
     id: str
     lesson: str
     code: str
+    user_id: str | None = None
     created: float = field(default_factory=time.time)
     status: str = "queued"  # queued | running | collecting | done | error
     exit_code: int | None = None
@@ -157,8 +158,11 @@ class Store:
         self.pending_logs: deque[tuple[float, dict]] = deque(maxlen=5000)
         self.stats = {"spans": 0, "points": 0, "logs": 0, "dropped": 0}
 
-    def create(self, lesson: str, code: str) -> Run:
-        run = Run(id=uuid.uuid4().hex[:12], lesson=lesson, code=code)
+    def active_for(self, user_id: str | None) -> Run | None:
+        return next((r for r in self.runs.values() if r.user_id == user_id and r.status in ("queued", "running", "collecting")), None)
+
+    def create(self, lesson: str, code: str, user_id: str | None = None) -> Run:
+        run = Run(id=uuid.uuid4().hex[:12], lesson=lesson, code=code, user_id=user_id)
         self.runs[run.id] = run
         while len(self.runs) > MAX_RUNS:
             _, old = self.runs.popitem(last=False)

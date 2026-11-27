@@ -132,6 +132,12 @@ export default function ScenarioDrawer() {
                       )}
                       {!svc.online && <span className="stats">offline</span>}
                     </div>
+                    {svc.changed && (
+                      <div className="svc-changed">
+                        Fault set by {svc.changed.by}
+                        {svc.changed.expires ? `, clears in ${Math.max(1, Math.round((svc.changed.expires - Date.now() / 1000) / 60))} min` : ""}
+                      </div>
+                    )}
                     {st && (
                       <>
                         <Slider label="Latency" value={st.chaos.latency_ms} min={0} max={2000} step={50} format={(v) => `+${v} ms`} onCommit={(v) => chaos(svc.id, { latency_ms: v })} />

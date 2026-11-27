@@ -11,22 +11,27 @@ import { LabProvider } from "./context";
 import Home from "./pages/Home";
 import LessonPage from "./pages/LessonPage";
 import StackPage from "./pages/StackPage";
+import AdminPage from "./pages/AdminPage";
+import { AuthGate } from "./auth";
 import CommandPalette from "./components/CommandPalette";
 import ScenarioDrawer from "./components/ScenarioDrawer";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
+      <AuthGate>
       <LabProvider>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/learn/:pack/:slug" element={<LessonPage />} />
           <Route path="/stack" element={<StackPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<Home />} />
         </Routes>
         <CommandPalette />
         <ScenarioDrawer />
       </LabProvider>
+      </AuthGate>
     </BrowserRouter>
   </StrictMode>,
 );
