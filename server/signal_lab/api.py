@@ -483,6 +483,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     return False, f"Values differ (got {x:.4g}, expected {y:.4g})."
         return True, ""
 
+    @app.api_route("/api/proxy/{backend_id}/{path:path}", methods=["GET", "POST"])
+    async def proxy(backend_id: str, path: str, request: Request) -> Response:
+        """Read-only passthrough declared by a backend's ``proxy`` manifest block."""
+        b = backend_or_404(backend_id)
+        spec = b.manifest.get("proxy") or {}
+        if not spec or not any(path.startswith(prefix) for prefix in spec.get("allow", [])):
+            raise HTTPException(403, "Path not allowed by the plugin's proxy rules")
+        target = b.settings.get(spec.get("target", ""), "").rstrip("/")
+        body = await request.body() if request.method == "POST" else None
+        try:
+            r = await http.request(request.method, f"{target}/{path}", params=dict(request.query_params), content=body, headers={"content-type": request.headers.get("content-type", "")} if body else None, timeout=8)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"{b.title} unreachable: {type(e).__name__}")
+        return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type"))
+
     @app.get("/api/suggest/{backend_id}")
     async def suggest(backend_id: str, language: str, kind: str = "metric", prefix: str = "") -> list[str]:
         b = backend_or_404(backend_id)

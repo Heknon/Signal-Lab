@@ -12,6 +12,7 @@ import uvicorn
 def main() -> None:
     role = (sys.argv[1] if len(sys.argv) > 1 else os.getenv("SIGNAL_LAB_ROLE", "api")).lower()
     logging.basicConfig(level=os.getenv("SIGNAL_LAB_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     host = os.getenv("SIGNAL_LAB_HOST", "0.0.0.0")
     if role == "api":
         from .api import create_app

@@ -25,3 +25,8 @@ links:
   - {id: explore, label: Grafana Explore, url: "{grafana_public_url}/explore", description: Ad-hoc MetricsQL queries}
   - {id: dashboards, label: Dashboards, url: "{grafana_public_url}/dashboards", description: Provisioned and your own dashboards}
   - {id: vmui, label: VMUI, url: "{victoriametrics_public_url}/vmui/", description: VictoriaMetrics' built-in query UI}
+
+# Read-only passthrough used by the in-lab MetricsQL editor for autocomplete.
+proxy:
+  target: victoriametrics_url
+  allow: ["api/v1/labels", "api/v1/label/", "api/v1/series", "api/v1/metadata", "api/v1/query", "api/v1/status/buildinfo"]
