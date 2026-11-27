@@ -165,6 +165,8 @@ class Lesson:
             "starter": self.files.get("starter"),
             "solution": self.files.get("solution"),
             "traffic": self.files.get("traffic"),
+            # The solution needs a value only a live run can give (e.g. a trace id).
+            "manual_solution": bool(m.get("manual_solution")),
             "query": m.get("query"),
             "quiz": quiz,
             "tools": m.get("tools", []),

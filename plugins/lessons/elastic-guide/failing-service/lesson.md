@@ -39,17 +39,14 @@ quiz:
       explanation: "The fault fails 40% of payments requests. checkout's rate matches it (every payment failure fails the order), while storefront's is lower because its product listing doesn't involve payments."
       hint: It's on the service inventory and on the service's Overview.
     - id: errors-tab
-      prompt: "The source service's **Errors** tab shows `CardDeclined: card declined by issuer`. Is that the fault you're investigating?"
+      prompt: "The source service's **Errors** tab includes `CardDeclined: card declined by issuer` and `RuntimeError: payments is having a bad day (injected fault)`. Which one is the incident?"
       options:
-        - {id: "yes", label: "Yes, it's the injected fault"}
-        - {id: "no", label: "No, card declines happen all the time; the new failures don't record an exception at all"}
-      answer: "no"
-      explanation: "About 2% of cards are declined in normal traffic, and those record an exception on the `provider.authorize` span. The injected 503s are failed transactions without any recorded exception, so they never appear under Errors. Failed transaction rate and errors are different signals: check both, and compare against what's normal."
-      hint: Is the error count new, or was it there before? Does it match a 40% failure rate?
-hints:
-  - "On the service inventory, sort by **Failed transaction rate**."
-  - "In a service's Transactions table, open a transaction group and use the **Failed transaction correlations** or the outcome filter to get failed samples."
-  - "Discover works too: `event.outcome : \"failure\" and processor.event : \"transaction\"` over `traces-apm*`."
+        - {id: runtime, label: "The `RuntimeError`: it appeared when the failures started, and its count tracks the failed transaction rate"}
+        - {id: declined, label: "`CardDeclined`: it's a payment error"}
+        - {id: both, label: "Both equally"}
+      answer: runtime
+      explanation: "About 2% of cards are declined in normal traffic, so `CardDeclined` was there before the incident and its rate didn't change. Always compare against what's normal: the new error group, and the one whose count follows the failure rate, is the incident."
+      hint: Look at each group's occurrences over time. Which one was already there an hour ago?
 ---
 
 Users report failed checkouts. The fault is already injected somewhere in

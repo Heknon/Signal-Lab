@@ -2,6 +2,7 @@
 title: All logs for one trace
 summary: Find a failed trace with ES|QL, then pull every log line written during it.
 kind: query
+manual_solution: true
 minutes: 7
 concepts: [trace.id, logs-apm, log correlation, KEEP]
 assumes: [ES|QL FROM, WHERE and STATS]

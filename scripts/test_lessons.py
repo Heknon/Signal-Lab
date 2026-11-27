@@ -74,6 +74,8 @@ def main() -> int:
                         print("     starter passes every check; the exercise has nothing to do")
                     for c in starter_fails[:2]:
                         print(f"     starter  ✗ {c['title']}: {c['detail']}")
+                elif lesson.get("manual_solution"):
+                    print(f"  -  {lid} (solution needs a live value; check by hand)")
                 elif kind == "query" and lesson.get("solution"):
                     q = lesson["query"]
                     try:
