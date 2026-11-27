@@ -1,0 +1,25 @@
+from opentelemetry import baggage, context, propagate, trace
+
+tracer = trace.get_tracer("tenants")
+
+
+def apply_discount() -> None:
+    with tracer.start_as_current_span("apply-discount") as span:
+        tenant = baggage.get_baggage("app.tenant.id")
+        if tenant:
+            span.set_attribute("app.tenant.id", str(tenant))
+
+
+def handle_request() -> None:
+    with tracer.start_as_current_span("handle-request"):
+        apply_discount()
+        headers: dict[str, str] = {}
+        propagate.inject(headers)
+        print("downstream headers:", headers)
+
+
+token = context.attach(baggage.set_baggage("app.tenant.id", "acme"))
+try:
+    handle_request()
+finally:
+    context.detach(token)

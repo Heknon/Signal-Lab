@@ -1,0 +1,28 @@
+id: elastic
+title: Elastic Observability
+vendor: Elastic
+description: >
+  Elasticsearch, Kibana and APM Server. Traces, metrics and logs land in one
+  place, with the APM UI (service map, waterfall, errors), Discover and
+  ES|QL for analysis.
+color: "#00BFB3"
+capabilities: [traces, metrics, logs]
+query_languages: [esql]
+components:
+  - {id: elasticsearch, title: Elasticsearch, role: Storage & search}
+  - {id: apm-server, title: APM Server, role: OTLP intake}
+  - {id: kibana, title: Kibana, role: APM UI, Discover, ES|QL}
+
+settings:
+  elasticsearch_url: {env: ELASTICSEARCH_URL, default: "http://elasticsearch:9200"}
+  kibana_url:        {env: KIBANA_URL, default: "http://kibana:5601"}
+  kibana_public_url: {env: KIBANA_PUBLIC_URL, default: "http://localhost:5601"}
+  apm_server_url:    {env: ELASTIC_APM_SERVER_URL, default: "http://apm-server:8200"}
+  elasticsearch_api_key: {env: ELASTICSEARCH_API_KEY, default: "", secret: true}
+
+links:
+  - {id: apm, label: Kibana APM, url: "{kibana_public_url}/app/apm/services", description: Services, transactions, errors}
+  - {id: service-map, label: Service map, url: "{kibana_public_url}/app/apm/service-map", description: How your services call each other}
+  - {id: discover, label: Discover, url: "{kibana_public_url}/app/discover", description: Search raw documents with KQL}
+  - {id: esql, label: ES|QL, url: "{kibana_public_url}/app/discover#/?_a=(query:(esql:'FROM traces-apm* | LIMIT 10'))", description: Piped query language}
+  - {id: trace, label: Open in Kibana, url: "{kibana_public_url}/app/apm/link-to/trace/{trace_id}"}

@@ -1,0 +1,4 @@
+_time:15m
+| stats by (service.name)
+    count() if (severity_text:=ERROR) errors,
+    count() total

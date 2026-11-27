@@ -1,0 +1,23 @@
+# APM Server accepts OTLP directly and maps it onto Elastic's data model.
+exporters:
+  otlp/elastic:
+    endpoint: ${env:ELASTIC_APM_OTLP_ENDPOINT:-apm-server:8200}
+    tls:
+      insecure: true
+    headers:
+      Authorization: ${env:ELASTIC_APM_AUTH_HEADER:-}
+
+service:
+  pipelines:
+    traces/elastic:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/elastic]
+    metrics/elastic:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/elastic]
+    logs/elastic:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/elastic]

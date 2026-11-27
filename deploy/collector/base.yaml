@@ -1,0 +1,61 @@
+# Base Collector config. Backend plugins add their own exporters and
+# pipelines in plugins/backends/<id>/collector.yaml; the Collector merges
+# every --config file it is given.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  batch:
+    timeout: 1s
+  # The lab's live inspector only needs learner runs, not background traffic.
+  # Spans from scenario services stay: they may belong to a learner's trace.
+  filter/lab-runs:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'resource.attributes["signal_lab.run_id"] == nil'
+  batch/lab:
+    timeout: 200ms
+
+exporters:
+  otlphttp/lab:
+    endpoint: ${env:SIGNAL_LAB_TAP_URL:-http://lab:8000/tap}
+    encoding: proto
+    compression: gzip
+    retry_on_failure:
+      enabled: false
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces/lab:
+      receivers: [otlp]
+      processors: [memory_limiter, batch/lab]
+      exporters: [otlphttp/lab]
+    metrics/lab:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/lab-runs, batch/lab]
+      exporters: [otlphttp/lab]
+    logs/lab:
+      receivers: [otlp]
+      processors: [memory_limiter, batch/lab]
+      exporters: [otlphttp/lab]

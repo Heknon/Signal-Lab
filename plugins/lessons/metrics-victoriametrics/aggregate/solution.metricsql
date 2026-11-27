@@ -1,0 +1,1 @@
+sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))

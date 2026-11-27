@@ -1,0 +1,16 @@
+{{- include "signal-lab.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "collector") | nindent 2 }}
+data:
+  {{- range $file := splitList "," (include "signal-lab.collectorConfigFiles" .) }}
+  {{- if eq $file "extra.yaml" }}
+  extra.yaml: |
+    # From collector.extraConfig in the Helm values.
+    {{- toYaml $.Values.collector.extraConfig | nindent 4 }}
+  {{- else }}
+  {{ $file }}: |
+    {{- $.Files.Get (printf "files/collector/%s" $file) | nindent 4 }}
+  {{- end }}
+  {{- end }}

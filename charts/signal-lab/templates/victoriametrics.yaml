@@ -1,0 +1,105 @@
+{{- if include "signal-lab.bundled" (dict "ctx" $ "id" "victoriametrics") }}
+{{- $vm := .Values.backends.victoriametrics }}
+{{- $name := include "signal-lab.componentName" (dict "ctx" $ "component" "victoriametrics") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "victoriametrics") | nindent 2 }}
+spec:
+  replicas: 1
+  serviceName: {{ $name }}
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victoriametrics") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "victoriametrics") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with $vm.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: victoriametrics
+          image: {{ include "signal-lab.image" (dict "image" $vm.image "global" .Values.global "defaultTag" "latest") | quote }}
+          imagePullPolicy: {{ $vm.image.pullPolicy }}
+          args:
+            - -storageDataPath=/victoria-metrics-data
+            - -retentionPeriod={{ $vm.retentionPeriod }}
+            - -search.latencyOffset=1s
+            # OTLP names like http.server.request.duration become
+            # http_server_request_duration_seconds, as Prometheus users expect.
+            - -opentelemetry.usePrometheusNaming
+            {{- with $vm.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8428
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- with $vm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $vm.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /victoria-metrics-data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not $vm.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with include "signal-lab.scheduling" $vm }}{{- . | trim | nindent 6 }}{{- end }}
+  {{- if $vm.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victoriametrics") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $vm.persistence.accessModes | nindent 10 }}
+        {{- with include "signal-lab.storageClass" $vm.persistence }}{{- . | trim | nindent 8 }}{{- end }}
+        resources:
+          requests:
+            storage: {{ $vm.persistence.size }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "victoriametrics") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victoriametrics") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8428
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+{{- end }}

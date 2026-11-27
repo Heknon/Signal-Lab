@@ -1,0 +1,6 @@
+_time:15m
+| stats by (service.name)
+    count() if (severity_text:=ERROR) errors,
+    count() total
+| math errors / total as error_ratio
+| fields service.name, error_ratio

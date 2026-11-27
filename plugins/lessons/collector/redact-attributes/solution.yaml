@@ -1,0 +1,16 @@
+processors:
+  batch:
+    timeout: 200ms
+  attributes/scrub:
+    actions:
+      - key: app.card.number
+        action: delete
+      - key: user.email
+        action: hash
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [attributes/scrub, batch]
+      exporters: [otlphttp/lab]

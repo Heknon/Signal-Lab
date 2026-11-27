@@ -1,0 +1,12 @@
+# VictoriaMetrics ingests OTLP metrics natively; no Prometheus remote-write needed.
+exporters:
+  otlphttp/victoriametrics:
+    metrics_endpoint: ${env:VICTORIAMETRICS_OTLP_URL:-http://victoriametrics:8428/opentelemetry/v1/metrics}
+    compression: gzip
+
+service:
+  pipelines:
+    metrics/victoriametrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/victoriametrics]

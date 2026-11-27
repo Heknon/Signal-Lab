@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Signal Lab helper. Wraps docker compose and manages which backend plugins run.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+bold() { printf '\033[1m%s\033[0m\n' "$*"; }
+available() { for d in plugins/backends/*/; do [ -f "$d/plugin.yaml" ] && basename "$d"; done; }
+current() { grep -E '^SIGNAL_LAB_BACKENDS=' .env 2>/dev/null | cut -d= -f2 | tr ',' ' '; }
+
+use() {
+  [ $# -gt 0 ] || { echo "usage: ./lab use <backend> [backend...]"; echo "available: $(available | xargs)"; exit 1; }
+  local files="compose.yaml" configs="--config=/app/deploy/collector/base.yaml" ids=""
+  for b in "$@"; do
+    [ -f "plugins/backends/$b/plugin.yaml" ] || { echo "unknown backend '$b' (available: $(available | xargs))"; exit 1; }
+    [ -f "plugins/backends/$b/compose.yaml" ] && files="$files:plugins/backends/$b/compose.yaml"
+    [ -f "plugins/backends/$b/collector.yaml" ] && configs="$configs --config=/app/plugins/backends/$b/collector.yaml"
+    ids="${ids:+$ids,}$b"
+  done
+  local tmp; tmp=$(mktemp)
+  grep -vE '^(SIGNAL_LAB_BACKENDS|COMPOSE_FILE|COLLECTOR_CONFIGS)=' .env 2>/dev/null > "$tmp" || true
+  { echo "SIGNAL_LAB_BACKENDS=$ids"; echo "COMPOSE_FILE=$files"; echo "COLLECTOR_CONFIGS=$configs"; } >> "$tmp"
+  mv "$tmp" .env
+  bold "Backends: $*"
+  echo "Run ./lab up to apply."
+}
+
+open_url() { command -v xdg-open >/dev/null && xdg-open "$1" >/dev/null 2>&1 || command -v open >/dev/null && open "$1" || echo "$1"; }
+
+case "${1:-help}" in
+  up)
+    shift
+    docker compose up -d --build --remove-orphans "$@"
+    bold "Signal Lab is starting: http://localhost:${SIGNAL_LAB_PORT:-8000}"
+    echo "Backends: $(current)   ·   ./lab status to check health"
+    ;;
+  down) shift; docker compose down --remove-orphans "$@" ;;
+  reset) docker compose down -v --remove-orphans ;;
+  use) shift; use "$@" ;;
+  backends)
+    for b in $(available); do
+      mark=" "; for c in $(current); do [ "$c" = "$b" ] && mark="●"; done
+      printf ' %s %-16s %s\n' "$mark" "$b" "$(grep -m1 '^title:' "plugins/backends/$b/plugin.yaml" | cut -d: -f2- | xargs)"
+    done ;;
+  status) docker compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ;;
+  logs) shift; docker compose logs -f --tail=100 "$@" ;;
+  open) open_url "http://localhost:${SIGNAL_LAB_PORT:-8000}" ;;
+  dev) exec scripts/dev.sh ;;
+  *)
+    cat <<USAGE
+Signal Lab: an interactive OpenTelemetry course.
+
+  ./lab up                 build and start everything (http://localhost:8000)
+  ./lab down               stop (keeps data)    ./lab reset   stop and wipe data
+  ./lab backends           list backend plugins (● = enabled)
+  ./lab use <ids...>       choose backends, e.g. ./lab use victoriametrics jaeger
+  ./lab status | logs [svc] | open
+  ./lab dev                run without Docker (API + shop on this machine)
+USAGE
+    ;;
+esac

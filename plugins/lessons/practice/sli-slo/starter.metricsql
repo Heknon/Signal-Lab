@@ -1,0 +1,5 @@
+# Latency SLI: the share of storefront requests answered within 250 ms.
+# This counts every bucket, so it's far above 1. Select only the right one.
+sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront"}[5m]))
+  /
+sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))

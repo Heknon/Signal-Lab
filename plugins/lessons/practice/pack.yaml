@@ -1,0 +1,39 @@
+id: practice
+title: Observability in practice
+description: >
+  Judgment, not syntax: choosing the right signal, the methods teams use to
+  watch systems, chaos experiments, and incidents you investigate from metrics.
+order: 40
+icon: gauge
+requires:
+  backends: [victoriametrics]
+modules:
+  - id: signals
+    title: Choosing the right signal
+    description: >
+      When to emit a metric, a span, a log, or nothing at all. Review over- and
+      under-instrumented code, design telemetry from the questions people will
+      ask, and estimate what it costs.
+    assumes: [Spans, Metrics, Structured logs]
+    lessons: [signal-triage, review-overinstrumented, review-underinstrumented, design-from-questions, cost-of-telemetry]
+  - id: methods
+    title: Watching a system
+    description: >
+      RED, USE and the four golden signals, then SLIs, SLOs, error budgets and
+      burn-rate alerts, built against the live Signal Shop.
+    assumes: [MetricsQL basics]
+    lessons: [red-method, use-method, golden-signals, sli-slo, error-budget, burn-rate-alerts]
+  - id: chaos
+    title: Chaos engineering
+    description: >
+      Experiments with a hypothesis, a steady state and an abort condition, run
+      on the shared Signal Shop with a live chart of the steady state.
+    assumes: [SLIs, Latency percentiles]
+    lessons: [chaos-principles, first-experiment, blast-radius, retry-amplification, abort-conditions]
+  - id: incidents
+    title: Incidents
+    description: >
+      The capstone. A symptom, a clock and Grafana: find when it started, the
+      root cause and the mechanism, from metrics alone, and prove it with a query.
+    assumes: [RED method, Latency percentiles, Error ratios]
+    lessons: [incident-tail-latency, incident-retry-storm, incident-saturation, incident-bad-deploy, incident-silent-failure, incident-memory-leak, incident-cardinality]

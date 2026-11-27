@@ -1,0 +1,11 @@
+processors:
+  batch:
+    timeout: 200ms
+  # TODO: a tail_sampling processor: errors, slow (> 500 ms) and ~10% of the rest
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab]

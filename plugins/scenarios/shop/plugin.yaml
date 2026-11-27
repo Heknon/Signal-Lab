@@ -1,0 +1,45 @@
+id: shop
+title: Signal Shop
+description: >
+  A tiny online shop made of four services plus a load generator. It is
+  auto-instrumented with OpenTelemetry, emits business metrics and logs, and
+  lets you inject latency and errors into any service.
+
+settings:
+  storefront: {env: SHOP_STOREFRONT_URL, default: "http://storefront:8080"}
+  checkout:   {env: SHOP_CHECKOUT_URL,   default: "http://checkout:8080"}
+  inventory:  {env: SHOP_INVENTORY_URL,  default: "http://inventory:8080"}
+  payments:   {env: SHOP_PAYMENTS_URL,   default: "http://payments:8080"}
+  loadgen:    {env: SHOP_LOADGEN_URL,    default: "http://loadgen:8080"}
+
+services:
+  - id: storefront
+    title: storefront
+    description: Public API. Lists products and starts checkouts.
+    url: "{storefront}"
+    calls: [checkout, inventory]
+  - id: checkout
+    title: checkout
+    description: Prices the order, reserves stock, takes payment.
+    url: "{checkout}"
+    calls: [inventory, payments]
+  - id: inventory
+    title: inventory
+    description: Stock levels, backed by a (simulated) Postgres.
+    url: "{inventory}"
+  - id: payments
+    title: payments
+    description: Charges cards through a (simulated) payment provider.
+    url: "{payments}"
+  - id: loadgen
+    title: loadgen
+    description: Sends steady traffic to the storefront.
+    url: "{loadgen}"
+    role: loadgen
+    calls: [storefront]
+
+# Injected into learner code so lessons can call the shop.
+runner_env:
+  SHOP_URL: "{storefront}"
+  SHOP_CHECKOUT_URL: "{checkout}"
+  SHOP_INVENTORY_URL: "{inventory}"

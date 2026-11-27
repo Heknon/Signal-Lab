@@ -1,0 +1,1 @@
+_time:15m | stats by (severity_text) count() logs

@@ -1,0 +1,3 @@
+_time:15m trace_id:in(
+  _time:15m service.name:=checkout severity_text:=ERROR | fields trace_id
+)

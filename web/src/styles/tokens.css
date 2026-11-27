@@ -1,0 +1,153 @@
+/* Design tokens. Dark is the default; light follows the OS unless the user picks. */
+
+:root {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-sm: 3px;   /* inputs, chips */
+  --radius: 5px;      /* buttons */
+  --radius-lg: 8px;   /* panels */
+
+  --topbar-h: 48px;
+  --sidebar-w: 268px;
+
+  /* Signal colours are used consistently everywhere a signal appears. */
+  --trace: #a78bfa;
+  --metric: #f5b041;
+  --log: #4cc2ff;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  color-scheme: dark;
+  --bg: #0b0c0e;
+  --bg-sunken: #08090a;
+  --surface: #111317;
+  --surface-2: #171a1f;
+  --surface-3: #1e2228;
+  --hover: #1c2026;
+  --border: #23272e;
+  --border-strong: #30353d;
+  --text: #e8eaed;
+  --text-2: #a7adb7;
+  --text-3: #6e7580;
+  --accent: #3ecf8e;
+  --accent-strong: #5ee0a5;
+  --accent-ink: #04130c;
+  --accent-soft: rgba(62, 207, 142, 0.12);
+  --focus: rgba(62, 207, 142, 0.45);
+  --info: #6ea8ff;
+  --info-soft: rgba(110, 168, 255, 0.12);
+  --ok: #3ecf8e;
+  --ok-soft: rgba(62, 207, 142, 0.12);
+  --warn: #f5b041;
+  --warn-soft: rgba(245, 176, 65, 0.12);
+  --err: #f87171;
+  --err-soft: rgba(248, 113, 113, 0.12);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 0 0 1px var(--border-strong), 0 18px 50px -12px rgba(0, 0, 0, 0.75);
+  --code-bg: #0e1013;
+  --scrim: rgba(4, 5, 6, 0.6);
+
+  --tok-keyword: #c49bff;
+  --tok-string: #9ad38a;
+  --tok-number: #f5b97a;
+  --tok-comment: #6b7380;
+  --tok-function: #7cc4ff;
+  --tok-variable: #e8eaed;
+  --tok-property: #8fd5e6;
+  --tok-type: #f2cc60;
+  --tok-operator: #a7adb7;
+  --tok-bool: #f08d71;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #fafaf9;
+    --bg-sunken: #f3f3f1;
+    --surface: #ffffff;
+    --surface-2: #f7f7f5;
+    --surface-3: #efefec;
+    --hover: #f1f1ee;
+    --border: #e5e5e1;
+    --border-strong: #d4d4cf;
+    --text: #17181a;
+    --text-2: #52565d;
+    --text-3: #868a91;
+    --accent: #0f9f62;
+    --accent-strong: #0b8552;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(15, 159, 98, 0.1);
+    --focus: rgba(15, 159, 98, 0.35);
+    --info: #2f6fe0;
+    --info-soft: rgba(47, 111, 224, 0.09);
+    --ok: #0f9f62;
+    --ok-soft: rgba(15, 159, 98, 0.1);
+    --warn: #b86e00;
+    --warn-soft: rgba(184, 110, 0, 0.1);
+    --err: #d33d3d;
+    --err-soft: rgba(211, 61, 61, 0.09);
+    --trace: #7c4ddb;
+    --metric: #c27a00;
+    --log: #0a84c6;
+    --shadow: 0 1px 2px rgba(20, 20, 15, 0.04), 0 8px 24px -12px rgba(20, 20, 15, 0.12);
+    --shadow-pop: 0 0 0 1px var(--border-strong), 0 18px 40px -12px rgba(20, 20, 15, 0.25);
+    --code-bg: #f6f6f4;
+    --scrim: rgba(20, 20, 15, 0.25);
+    --tok-keyword: #8a3ffc;
+    --tok-string: #2f7d32;
+    --tok-number: #b35c00;
+    --tok-comment: #8b8f96;
+    --tok-function: #0b63c4;
+    --tok-variable: #17181a;
+    --tok-property: #0e7490;
+    --tok-type: #9a6700;
+    --tok-operator: #52565d;
+    --tok-bool: #c2410c;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafaf9;
+  --bg-sunken: #f3f3f1;
+  --surface: #ffffff;
+  --surface-2: #f7f7f5;
+  --surface-3: #efefec;
+  --hover: #f1f1ee;
+  --border: #e5e5e1;
+  --border-strong: #d4d4cf;
+  --text: #17181a;
+  --text-2: #52565d;
+  --text-3: #868a91;
+  --accent: #0f9f62;
+  --accent-strong: #0b8552;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(15, 159, 98, 0.1);
+  --focus: rgba(15, 159, 98, 0.35);
+  --info: #2f6fe0;
+  --info-soft: rgba(47, 111, 224, 0.09);
+  --ok: #0f9f62;
+  --ok-soft: rgba(15, 159, 98, 0.1);
+  --warn: #b86e00;
+  --warn-soft: rgba(184, 110, 0, 0.1);
+  --err: #d33d3d;
+  --err-soft: rgba(211, 61, 61, 0.09);
+  --trace: #7c4ddb;
+  --metric: #c27a00;
+  --log: #0a84c6;
+  --shadow: 0 1px 2px rgba(20, 20, 15, 0.04), 0 8px 24px -12px rgba(20, 20, 15, 0.12);
+  --shadow-pop: 0 0 0 1px var(--border-strong), 0 18px 40px -12px rgba(20, 20, 15, 0.25);
+  --code-bg: #f6f6f4;
+  --scrim: rgba(20, 20, 15, 0.25);
+  --tok-keyword: #8a3ffc;
+  --tok-string: #2f7d32;
+  --tok-number: #b35c00;
+  --tok-comment: #8b8f96;
+  --tok-function: #0b63c4;
+  --tok-variable: #17181a;
+  --tok-property: #0e7490;
+  --tok-type: #9a6700;
+  --tok-operator: #52565d;
+  --tok-bool: #c2410c;
+}

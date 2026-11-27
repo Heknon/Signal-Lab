@@ -1,0 +1,11 @@
+processors:
+  batch:
+    timeout: 200ms
+  # TODO: a transform processor with span and resource statements
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab]

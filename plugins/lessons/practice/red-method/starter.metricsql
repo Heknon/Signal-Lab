@@ -1,0 +1,15 @@
+union(
+  label_set(
+    sum(http_server_request_duration_seconds_count{service_name="checkout"}),
+    "signal", "rate"
+  ),
+  label_set(
+    sum(rate(http_server_request_duration_seconds_count{service_name="checkout", http_response_status_code=~"5.."}[5m])),
+    "signal", "errors"
+  ),
+  label_set(
+    sum(rate(http_server_request_duration_seconds_sum{service_name="checkout"}[5m]))
+      / sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])),
+    "signal", "duration_p95"
+  )
+)

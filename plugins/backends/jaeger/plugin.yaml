@@ -1,0 +1,19 @@
+id: jaeger
+title: Jaeger
+vendor: CNCF
+description: >
+  A lightweight, open-source tracing backend. A good choice when you want
+  traces without the weight of a full observability platform.
+color: "#60A5FA"
+capabilities: [traces]
+query_languages: []
+components:
+  - {id: jaeger, title: Jaeger, role: Trace storage & UI}
+
+settings:
+  jaeger_url:        {env: JAEGER_URL, default: "http://jaeger:16686"}
+  jaeger_public_url: {env: JAEGER_PUBLIC_URL, default: "http://localhost:16686"}
+
+links:
+  - {id: ui, label: Jaeger UI, url: "{jaeger_public_url}/search", description: Search traces}
+  - {id: trace, label: Open in Jaeger, url: "{jaeger_public_url}/trace/{trace_id}"}

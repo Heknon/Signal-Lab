@@ -1,0 +1,8 @@
+services:
+  jaeger:
+    image: ${JAEGER_IMAGE:-jaegertracing/jaeger:2.1.0}
+    ports: ["16686:16686"]
+
+  lab:
+    environment:
+      JAEGER_URL: http://jaeger:16686

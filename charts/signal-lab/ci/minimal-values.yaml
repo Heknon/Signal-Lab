@@ -1,0 +1,21 @@
+# No backends, no scenario: only the lab's live inspector. Exposed through a host-less Ingress.
+backends:
+  victoriametrics:
+    enabled: false
+  jaeger:
+    enabled: false
+  victorialogs:
+    enabled: false
+  elastic:
+    enabled: false
+scenario:
+  enabled: false
+lab:
+  runs:
+    enabled: false
+  service:
+    type: NodePort
+ingress:
+  enabled: true
+  hosts:
+    lab: ""

@@ -1,0 +1,13 @@
+# Merged with the lab's base config, which already defines:
+#   receivers: otlp        exporters: otlphttp/lab (the inspector), debug
+processors:
+  batch:
+    timeout: 200ms
+  # TODO: a filter processor that drops health-check spans
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab]

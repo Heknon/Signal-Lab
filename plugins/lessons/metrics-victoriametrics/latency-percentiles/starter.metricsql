@@ -1,0 +1,1 @@
+histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket[5m]))

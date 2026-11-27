@@ -1,0 +1,91 @@
+{{- if include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger") }}
+{{- $j := .Values.backends.jaeger }}
+# Jaeger v2 all-in-one with in-memory storage: traces are lost on restart.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "jaeger") | nindent 2 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "jaeger") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "jaeger") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      enableServiceLinks: false
+      {{- with $j.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: jaeger
+          image: {{ include "signal-lab.image" (dict "image" $j.image "global" .Values.global "defaultTag" "latest") | quote }}
+          imagePullPolicy: {{ $j.image.pullPolicy }}
+          ports:
+            - name: ui
+              containerPort: 16686
+              protocol: TCP
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: ui
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: ui
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- with $j.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $j.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with include "signal-lab.scheduling" $j }}{{- . | trim | nindent 6 }}{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "jaeger") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "jaeger") | nindent 4 }}
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: ui
+      protocol: TCP
+      appProtocol: http
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+      appProtocol: http
+{{- end }}

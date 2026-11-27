@@ -1,0 +1,5 @@
+FROM traces-apm*
+| WHERE processor.event == "transaction" AND @timestamp > NOW() - 15 minutes
+| EVAL failed = CASE(event.outcome == "failure", 1, 0)
+| STATS failure_rate = AVG(failed) BY service.name
+| SORT failure_rate DESC

@@ -1,0 +1,11 @@
+processors:
+  batch:
+    timeout: 200ms
+  # TODO: delete app.card.number and hash user.email
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab]

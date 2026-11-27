@@ -1,0 +1,4 @@
+WITH (
+  r(m) = sum by (app_user_tier) (rate(m[5m]))
+)
+r(shop_order_value_USD_sum) / r(shop_order_value_USD_count)

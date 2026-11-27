@@ -1,0 +1,122 @@
+# Signal Lab core: the lab UI/API, an isolated code runner, the OpenTelemetry
+# Collector and the Signal Shop scenario.
+#
+# Backends are plugins: their services live in plugins/backends/<id>/compose.yaml
+# and are added through COMPOSE_FILE in .env. Use `./lab use <ids...>` to switch.
+
+x-shop: &shop
+  image: ${SIGNAL_LAB_IMAGE:-signal-lab:local}
+  working_dir: /app/plugins/scenarios/shop
+  entrypoint: ["opentelemetry-instrument"]
+  command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
+  restart: unless-stopped
+  depends_on: [collector]
+
+x-shop-env: &shop-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_LOGS_EXPORTER: otlp
+  OTEL_METRIC_EXPORT_INTERVAL: "5000"
+  OTEL_SEMCONV_STABILITY_OPT_IN: http
+  OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: fastapi
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=lab,service.version=1.4.2
+  SHOP_STOREFRONT_URL: http://storefront:8080
+  SHOP_CHECKOUT_URL: http://checkout:8080
+  SHOP_INVENTORY_URL: http://inventory:8080
+  SHOP_PAYMENTS_URL: http://payments:8080
+
+services:
+  lab:
+    image: ${SIGNAL_LAB_IMAGE:-signal-lab:local}
+    build: .
+    ports: ["${SIGNAL_LAB_PORT:-8000}:8000"]
+    environment:
+      SIGNAL_LAB_BACKENDS: ${SIGNAL_LAB_BACKENDS:-}
+      SIGNAL_LAB_RUNNER_URL: http://runner:8001
+      SIGNAL_LAB_OTLP_ENDPOINT: http://collector:4318
+      SIGNAL_LAB_TAP_URL: http://lab:8000/tap
+      SIGNAL_LAB_COLLECTOR_HEALTH_URL: http://collector:13133/
+      SIGNAL_LAB_COLLECTOR_CONFIGS: ${COLLECTOR_CONFIGS}
+      SIGNAL_LAB_SCENARIOS: shop
+      SIGNAL_LAB_RELOAD: "true"
+      SIGNAL_LAB_DATABASE_URL: postgresql://signallab:${POSTGRES_PASSWORD:-signallab}@postgres:5432/signallab
+      # open = no login (your own machine); accounts = sign-in, per-person progress
+      SIGNAL_LAB_AUTH: ${SIGNAL_LAB_AUTH:-open}
+      SIGNAL_LAB_SIGNUP: ${SIGNAL_LAB_SIGNUP:-open}
+      SIGNAL_LAB_ADMIN_USERNAME: ${SIGNAL_LAB_ADMIN_USERNAME:-}
+      SIGNAL_LAB_ADMIN_PASSWORD: ${SIGNAL_LAB_ADMIN_PASSWORD:-}
+      SHOP_STOREFRONT_URL: http://storefront:8080
+      SHOP_CHECKOUT_URL: http://checkout:8080
+      SHOP_INVENTORY_URL: http://inventory:8080
+      SHOP_PAYMENTS_URL: http://payments:8080
+      SHOP_LOADGEN_URL: http://loadgen:8080
+    volumes:
+      # Mounted so lesson and plugin edits show up without a rebuild.
+      - ./plugins:/app/plugins:ro
+      - ./deploy/collector:/app/deploy/collector:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+    restart: unless-stopped
+
+  # Learner code runs here, not in the API container: no published ports,
+  # read-only filesystem, unprivileged user, CPU and memory caps.
+  runner:
+    image: ${SIGNAL_LAB_IMAGE:-signal-lab:local}
+    command: ["runner"]
+    environment:
+      SIGNAL_LAB_PORT: "8001"
+      SIGNAL_LAB_RUN_TIMEOUT: "30"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.5
+    restart: unless-stopped
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    environment:
+      POSTGRES_USER: signallab
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signallab}
+      POSTGRES_DB: signallab
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signallab -d signallab"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  collector:
+    image: ${COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.115.1}
+    command: ${COLLECTOR_CONFIGS}
+    volumes:
+      - ./deploy/collector:/app/deploy/collector:ro
+      - ./plugins:/app/plugins:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
+  storefront:
+    <<: *shop
+    environment: {<<: *shop-env, SHOP_SERVICE: storefront, OTEL_SERVICE_NAME: storefront}
+  checkout:
+    <<: *shop
+    environment: {<<: *shop-env, SHOP_SERVICE: checkout, OTEL_SERVICE_NAME: checkout}
+  inventory:
+    <<: *shop
+    environment: {<<: *shop-env, SHOP_SERVICE: inventory, OTEL_SERVICE_NAME: inventory}
+  payments:
+    <<: *shop
+    environment: {<<: *shop-env, SHOP_SERVICE: payments, OTEL_SERVICE_NAME: payments}
+  loadgen:
+    <<: *shop
+    environment: {<<: *shop-env, SHOP_SERVICE: loadgen, OTEL_SERVICE_NAME: loadgen, SHOP_LOADGEN_RPS: "2"}
+
+volumes:
+  pg-data:

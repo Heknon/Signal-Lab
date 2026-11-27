@@ -1,0 +1,19 @@
+# Pinned so every learner gets the same SDK behaviour. Bump together.
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+httpx==0.29.0
+PyYAML==6.0.4
+requests==2.34.2
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-proto==1.45.2
+opentelemetry-exporter-otlp-proto-http==1.45.2
+opentelemetry-semantic-conventions==0.66b2
+opentelemetry-distro==0.66b2
+opentelemetry-instrumentation==0.66b2
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-instrumentation-httpx==0.66b2
+opentelemetry-instrumentation-requests==0.66b2
+opentelemetry-instrumentation-logging==0.66b2
+psycopg[binary]==3.3.9
+psycopg-pool==3.3.3

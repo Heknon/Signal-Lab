@@ -1,0 +1,297 @@
+{{- if include "signal-lab.bundled" (dict "ctx" $ "id" "elastic") }}
+{{- $e := .Values.backends.elastic }}
+{{- $es := $e.elasticsearch }}
+{{- $kb := $e.kibana }}
+{{- $apm := $e.apmServer }}
+{{- $esUrl := include "signal-lab.svcUrl" (dict "ctx" $ "component" "elasticsearch" "port" 9200) }}
+{{- $kbUrl := include "signal-lab.svcUrl" (dict "ctx" $ "component" "kibana" "port" 5601) }}
+{{- $kbSecret := include "signal-lab.componentName" (dict "ctx" $ "component" "kibana") }}
+# LAB ONLY: a single-node Elastic stack with security disabled (no TLS, no auth).
+# Anyone who can reach these Services can read and delete all data.
+{{- if not $kb.existingSecret }}
+{{- $key := $kb.encryptionKey }}
+{{- if not $key }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $kbSecret }}
+{{- if and $existing $existing.data (index $existing.data "encryptionKey") }}
+{{- $key = index $existing.data "encryptionKey" | b64dec }}
+{{- else }}
+{{- $key = randAlphaNum 48 }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "kibana") | nindent 2 }}
+type: Opaque
+data:
+  encryptionKey: {{ $key | b64enc | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "elasticsearch") | nindent 2 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "signal-lab.componentName" (dict "ctx" $ "component" "elasticsearch") }}
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "elasticsearch") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "elasticsearch") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      enableServiceLinks: false
+      {{- with $es.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: elasticsearch
+          image: {{ include "signal-lab.elasticImage" (dict "ctx" $ "image" $es.image) | quote }}
+          imagePullPolicy: {{ $es.image.pullPolicy }}
+          env:
+            - name: discovery.type
+              value: single-node
+            # LAB ONLY: no authentication, no TLS.
+            - name: xpack.security.enabled
+              value: "false"
+            - name: xpack.license.self_generated.type
+              value: basic
+            - name: cluster.routing.allocation.disk.threshold_enabled
+              value: "false"
+            # Avoids needing vm.max_map_count on the node (no privileged init container).
+            - name: node.store.allow_mmap
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: {{ $es.heap | quote }}
+            {{- with $es.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 9200
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          {{- with $es.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $es.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+      {{- if not $es.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+      {{- with include "signal-lab.scheduling" $es }}{{- . | trim | nindent 6 }}{{- end }}
+  {{- if $es.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "elasticsearch") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $es.persistence.accessModes | nindent 10 }}
+        {{- with include "signal-lab.storageClass" $es.persistence }}{{- . | trim | nindent 8 }}{{- end }}
+        resources:
+          requests:
+            storage: {{ $es.persistence.size }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "elasticsearch") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "elasticsearch") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "kibana") | nindent 2 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "kibana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "kibana") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      enableServiceLinks: false
+      {{- with $kb.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kibana
+          image: {{ include "signal-lab.elasticImage" (dict "ctx" $ "image" $kb.image) | quote }}
+          imagePullPolicy: {{ $kb.image.pullPolicy }}
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: {{ printf "[\"%s\"]" $esUrl | quote }}
+            - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $kb.existingSecret | default $kbSecret }}
+                  key: encryptionKey
+            - name: TELEMETRY_OPTIN
+              value: "false"
+            - name: SERVER_PUBLICBASEURL
+              value: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $kb.publicUrl "host" "kibana" "port" 5601) | quote }}
+          ports:
+            - name: http
+              containerPort: 5601
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          {{- with $kb.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $kb.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with include "signal-lab.scheduling" $kb }}{{- . | trim | nindent 6 }}{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "kibana") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "kibana") | nindent 4 }}
+  ports:
+    - name: http
+      port: 5601
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "apm-server") | nindent 2 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "apm-server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "apm-server") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      enableServiceLinks: false
+      {{- with $apm.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: apm-server
+          image: {{ include "signal-lab.elasticImage" (dict "ctx" $ "image" $apm.image) | quote }}
+          imagePullPolicy: {{ $apm.image.pullPolicy }}
+          args:
+            - -e
+            - -E
+            - apm-server.host=0.0.0.0:8200
+            - -E
+            - {{ printf "output.elasticsearch.hosts=[\"%s\"]" $esUrl | quote }}
+            - -E
+            - apm-server.kibana.enabled=true
+            - -E
+            - apm-server.kibana.host={{ $kbUrl }}
+          ports:
+            - name: http
+              containerPort: 8200
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          {{- with $apm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $apm.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with include "signal-lab.scheduling" $apm }}{{- . | trim | nindent 6 }}{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "apm-server") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "apm-server") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8200
+      targetPort: http
+      protocol: TCP
+{{- end }}

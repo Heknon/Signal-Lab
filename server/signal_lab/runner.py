@@ -1,0 +1,304 @@
+"""Execute learner code with real OpenTelemetry auto-configuration.
+
+Code runs as ``opentelemetry-instrument python main.py`` in a throwaway
+directory: the same way you'd run a service in production. The SDK is
+configured entirely through ``OTEL_*`` environment variables, which the lab
+shows to the learner.
+
+The runner can work in-process (dev) or as its own service (compose / Helm),
+so untrusted code can be isolated from the API with its own security context,
+resource limits and network policy.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import shutil
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import AsyncIterator
+
+import httpx
+
+MAX_OUTPUT_LINES = 1500
+MAX_LINE_CHARS = 4000
+
+
+def _instrument_cmd() -> list[str]:
+    exe = Path(sys.executable)
+    script = exe.with_name("opentelemetry-instrument")
+    if script.exists():
+        return [str(script), str(exe)]
+    found = shutil.which("opentelemetry-instrument")
+    if found:
+        return [found, str(exe)]
+    return [str(exe), "-c", "from opentelemetry.instrumentation.auto_instrumentation import run; run()", str(exe)]
+
+
+def _limits(memory_mb: int | None, cpu_s: int):
+    def apply() -> None:  # pragma: no cover - runs in the child
+        try:
+            import resource
+
+            if memory_mb:  # Go programs reserve huge virtual memory; they use GOMEMLIMIT instead
+                resource.setrlimit(resource.RLIMIT_AS, (memory_mb * 1024 * 1024,) * 2)
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s))
+            resource.setrlimit(resource.RLIMIT_NPROC, (256, 256))
+        except Exception:
+            pass
+        os.setsid()
+
+    return apply
+
+
+COLLECTOR_BIN = os.getenv("SIGNAL_LAB_COLLECTOR_BIN", "otelcol-lab")
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+async def _port_open(port: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            _, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.close()
+            return True
+        except OSError:
+            await asyncio.sleep(0.1)
+    return False
+
+
+def _collector_base(port: int, tap_url: str) -> str:
+    """Wiring every hands-on lesson shares: the learner adds processors and pipelines."""
+    return f"""receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:{port}
+exporters:
+  otlphttp/lab:
+    endpoint: {tap_url}
+    encoding: proto
+    retry_on_failure:
+      enabled: false
+  debug:
+    verbosity: basic
+service:
+  telemetry:
+    logs:
+      level: warn
+      encoding: console
+    metrics:
+      level: none
+"""
+
+
+async def execute_local(
+    code: str,
+    env: dict[str, str],
+    *,
+    timeout: float = 20,
+    auto_instrument: bool = True,
+    memory_mb: int = 768,
+    collector_config: str | None = None,
+    tap_url: str | None = None,
+    settle_s: float = 3,
+) -> AsyncIterator[dict]:
+    """Run learner code. With ``collector_config``, ``code`` is the lesson's
+    traffic script and it is sent through a Collector built from the learner's config."""
+    workdir = Path(tempfile.mkdtemp(prefix="signal-lab-run-"))
+    (workdir / "main.py").write_text(code)
+    child_env = {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "HOME": str(workdir),
+        "LANG": "C.UTF-8",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    } | env
+    started = time.monotonic()
+    queue: asyncio.Queue = asyncio.Queue()
+    lines = 0
+    procs: list[asyncio.subprocess.Process] = []
+    pumps: list[asyncio.Task] = []
+
+    async def pump(stream: asyncio.StreamReader, name: str) -> None:
+        while True:
+            raw = await stream.readline()
+            if not raw:
+                break
+            await queue.put({"type": "output", "stream": name, "text": raw.decode(errors="replace").rstrip("\n")[:MAX_LINE_CHARS], "t": round((time.monotonic() - started) * 1000)})
+
+    async def spawn(cmd: list[str], out_name: str, err_name: str, proc_env: dict[str, str], limit_memory: bool = True) -> asyncio.subprocess.Process:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, cwd=workdir, env=proc_env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            preexec_fn=_limits(memory_mb if limit_memory else None, int(timeout) + 15),
+        )
+        procs.append(proc)
+        pumps.append(asyncio.create_task(pump(proc.stdout, out_name)))  # type: ignore[arg-type]
+        pumps.append(asyncio.create_task(pump(proc.stderr, err_name)))  # type: ignore[arg-type]
+        return proc
+
+    def drain() -> list[dict]:
+        nonlocal lines
+        out = []
+        while not queue.empty():
+            item = queue.get_nowait()
+            lines += 1
+            if lines <= MAX_OUTPUT_LINES:
+                out.append(item)
+            elif lines == MAX_OUTPUT_LINES + 1:
+                out.append({"type": "output", "stream": "system", "text": f"… output truncated after {MAX_OUTPUT_LINES} lines"})
+        return out
+
+    collector = None
+    try:
+        if collector_config is not None:
+            port = _free_port()
+            (workdir / "base.yaml").write_text(_collector_base(port, tap_url or "http://127.0.0.1:8000/tap"))
+            (workdir / "collector.yaml").write_text(collector_config)
+            configs = ["--config=base.yaml", "--config=collector.yaml"]
+            yield {"type": "start", "command": "otelcol " + " ".join(configs)}
+            check = await asyncio.create_subprocess_exec(
+                COLLECTOR_BIN, "validate", *configs, cwd=workdir, env={"PATH": child_env["PATH"], "HOME": str(workdir), "GOMEMLIMIT": "256MiB"},
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await check.communicate()
+            if check.returncode != 0:
+                for line in out.decode(errors="replace").splitlines():
+                    if line.strip():
+                        yield {"type": "output", "stream": "stderr", "text": "collector: " + line.strip()[:MAX_LINE_CHARS]}
+                yield {"type": "exit", "code": 2, "duration_ms": round((time.monotonic() - started) * 1000, 1)}
+                return
+            collector = await spawn([COLLECTOR_BIN, *configs], "collector", "collector", {"PATH": child_env["PATH"], "HOME": str(workdir), "GOMEMLIMIT": "256MiB"}, limit_memory=False)
+            if not await _port_open(port, 10):
+                await asyncio.sleep(0.2)
+                for item in drain():
+                    yield item
+                yield {"type": "output", "stream": "system", "text": "The Collector didn't start. See its output above."}
+                yield {"type": "exit", "code": 2, "duration_ms": round((time.monotonic() - started) * 1000, 1)}
+                return
+            child_env = child_env | {"OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{port}"}
+            yield {"type": "output", "stream": "system", "text": f"Collector listening on :{port}. Sending the lesson's traffic through it…"}
+        else:
+            yield {"type": "start", "command": ("opentelemetry-instrument python" if auto_instrument else "python") + " main.py"}
+
+        cmd = (_instrument_cmd() if auto_instrument else [sys.executable]) + ["main.py"]
+        program = await spawn(cmd, "stdout", "stderr", child_env)
+        deadline = started + timeout
+        timed_out = False
+        while True:
+            try:
+                code_ = await asyncio.wait_for(program.wait(), timeout=0.1)
+                break
+            except asyncio.TimeoutError:
+                for item in drain():
+                    yield item
+                if time.monotonic() > deadline:
+                    timed_out = True
+                    try:
+                        os.killpg(program.pid, 9)
+                    except ProcessLookupError:
+                        pass
+                    code_ = -9
+                    break
+        await asyncio.sleep(0.1)
+        for item in drain():
+            yield item
+        if timed_out:
+            yield {"type": "output", "stream": "system", "text": f"Stopped: the program ran longer than {timeout:g}s."}
+
+        if collector is not None:
+            # Give processors with buffers (batch, tail_sampling) time, then shut down cleanly so they flush.
+            settle_deadline = time.monotonic() + settle_s
+            while time.monotonic() < settle_deadline:
+                await asyncio.sleep(0.2)
+                for item in drain():
+                    yield item
+            if collector.returncode is None:
+                collector.terminate()
+                try:
+                    await asyncio.wait_for(collector.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    collector.kill()
+            await asyncio.sleep(0.1)
+            for item in drain():
+                yield item
+    finally:
+        for p in procs:
+            if p.returncode is None:
+                try:
+                    os.killpg(p.pid, 9)
+                except ProcessLookupError:
+                    pass
+        for t in pumps:
+            t.cancel()
+        shutil.rmtree(workdir, ignore_errors=True)
+    yield {"type": "exit", "code": code_, "duration_ms": round((time.monotonic() - started) * 1000, 1)}
+
+
+async def execute_remote(url: str, code: str, env: dict[str, str], *, timeout: float = 20, auto_instrument: bool = True, **extra) -> AsyncIterator[dict]:
+    payload = {"code": code, "env": env, "timeout": timeout, "auto_instrument": auto_instrument} | extra
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout + 15, connect=5)) as client:
+        try:
+            async with client.stream("POST", url.rstrip("/") + "/exec", json=payload) as r:
+                if r.status_code != 200:
+                    yield {"type": "output", "stream": "system", "text": f"Runner returned HTTP {r.status_code}"}
+                    yield {"type": "exit", "code": -1, "duration_ms": 0}
+                    return
+                async for line in r.aiter_lines():
+                    if line.strip():
+                        yield json.loads(line)
+        except httpx.HTTPError as e:
+            yield {"type": "output", "stream": "system", "text": f"Could not reach the runner at {url}: {type(e).__name__}"}
+            yield {"type": "exit", "code": -1, "duration_ms": 0}
+
+
+from pydantic import BaseModel
+
+
+class ExecRequest(BaseModel):
+    code: str
+    env: dict[str, str] = {}
+    timeout: float = 20
+    auto_instrument: bool = True
+    collector_config: str | None = None
+    tap_url: str | None = None
+    settle_s: float = 3
+
+
+def create_runner_app():
+    """Stand-alone runner service: ``python -m signal_lab runner``."""
+    from fastapi import FastAPI
+    from fastapi.responses import StreamingResponse
+
+    app = FastAPI(title="Signal Lab runner")
+    max_timeout = float(os.getenv("SIGNAL_LAB_RUN_TIMEOUT", "30"))
+    semaphore = asyncio.Semaphore(int(os.getenv("SIGNAL_LAB_RUNNER_CONCURRENCY", "4")))
+
+    @app.get("/healthz")
+    async def healthz() -> dict:
+        return {"ok": True}
+
+    @app.post("/exec")
+    async def exec_(req: ExecRequest):
+        async def stream():
+            async with semaphore:
+                async for ev in execute_local(
+                    req.code, req.env, timeout=min(req.timeout, max_timeout), auto_instrument=req.auto_instrument,
+                    collector_config=req.collector_config, tap_url=req.tap_url, settle_s=min(req.settle_s, 15),
+                ):
+                    yield json.dumps(ev) + "\n"
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    return app

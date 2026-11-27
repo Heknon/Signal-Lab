@@ -1,0 +1,32 @@
+id: victoriametrics
+title: VictoriaMetrics + Grafana
+vendor: VictoriaMetrics · Grafana Labs
+description: >
+  A fast, Prometheus-compatible time-series database that ingests OTLP
+  natively, with Grafana for Explore, dashboards and alerting. Query with
+  MetricsQL, a superset of PromQL.
+color: "#E5A00D"
+capabilities: [metrics]
+query_languages: [metricsql]
+components:
+  - {id: victoriametrics, title: VictoriaMetrics, role: Metrics storage}
+  - {id: grafana, title: Grafana, role: Explore, dashboards, alerts}
+
+settings:
+  victoriametrics_url:        {env: VICTORIAMETRICS_URL, default: "http://victoriametrics:8428"}
+  victoriametrics_public_url: {env: VICTORIAMETRICS_PUBLIC_URL, default: "http://localhost:8428"}
+  grafana_url:                {env: GRAFANA_URL, default: "http://grafana:3000"}
+  grafana_public_url:         {env: GRAFANA_PUBLIC_URL, default: "http://localhost:3000"}
+  grafana_datasource_uid:     {env: GRAFANA_DATASOURCE_UID, default: "victoriametrics"}
+  grafana_token:              {env: GRAFANA_TOKEN, default: "", secret: true}
+
+links:
+  - {id: grafana, label: Grafana, url: "{grafana_public_url}", description: Dashboards and alerting}
+  - {id: explore, label: Grafana Explore, url: "{grafana_public_url}/explore", description: Ad-hoc MetricsQL queries}
+  - {id: dashboards, label: Dashboards, url: "{grafana_public_url}/dashboards", description: Provisioned and your own dashboards}
+  - {id: vmui, label: VMUI, url: "{victoriametrics_public_url}/vmui/", description: VictoriaMetrics' built-in query UI}
+
+# Read-only passthrough used by the in-lab MetricsQL editor for autocomplete.
+proxy:
+  target: victoriametrics_url
+  allow: ["api/v1/labels", "api/v1/label/", "api/v1/series", "api/v1/metadata", "api/v1/query", "api/v1/status/buildinfo"]

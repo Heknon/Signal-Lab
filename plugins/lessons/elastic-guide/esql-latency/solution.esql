@@ -1,0 +1,6 @@
+FROM traces-apm*
+| WHERE processor.event == "transaction" AND service.name == "storefront" AND @timestamp > NOW() - 15 minutes
+| STATS avg_us = AVG(transaction.duration.us), p95_us = PERCENTILE(transaction.duration.us, 95) BY transaction.name
+| EVAL avg_ms = ROUND(avg_us / 1000.0, 1), p95_ms = ROUND(p95_us / 1000.0, 1)
+| KEEP transaction.name, avg_ms, p95_ms
+| SORT p95_ms DESC

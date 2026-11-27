@@ -1,0 +1,102 @@
+Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+{{- $lab := include "signal-lab.componentName" (dict "ctx" $ "component" "lab") }}
+
+1. Open the lab
+{{- if .Values.ingress.enabled }}
+{{- if .Values.ingress.hosts.lab }}
+   {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" "" "host" "lab" "port" .Values.lab.service.port) }}
+{{- else }}
+   The Ingress rule for the lab matches any host: open your ingress controller's address.
+{{- end }}
+{{- else if eq .Values.lab.service.type "LoadBalancer" }}
+   kubectl -n {{ .Release.Namespace }} get svc {{ $lab }} -w   # wait for EXTERNAL-IP, then open http://<EXTERNAL-IP>:{{ .Values.lab.service.port }}
+{{- else if eq .Values.lab.service.type "NodePort" }}
+   echo http://$(kubectl -n {{ .Release.Namespace }} get nodes -o jsonpath='{.items[0].status.addresses[0].address}'):$(kubectl -n {{ .Release.Namespace }} get svc {{ $lab }} -o jsonpath='{.spec.ports[0].nodePort}')
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $lab }} 8000:{{ .Values.lab.service.port }}
+   then open http://localhost:8000
+{{- end }}
+
+2. Backends
+{{- $enabled := include "signal-lab.enabledBackends" . }}
+{{- if not $enabled }}
+   No backend is enabled: telemetry only reaches the lab's live inspector.
+   Enable one with e.g. --set backends.jaeger.enabled=true
+{{- end }}
+{{- $vm := .Values.backends.victoriametrics }}
+{{- if $vm.enabled }}
+   * victoriametrics ({{ $vm.mode }})
+{{- if include "signal-lab.grafanaBundled" . }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.grafana }}
+       Grafana: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $vm.grafana.publicUrl "host" "grafana" "port" 3000) }}
+{{- else }}
+       Grafana: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "grafana") }} 3000:3000
+{{- end }}
+{{- end }}
+{{- if eq $vm.mode "external" }}
+       VictoriaMetrics: {{ $vm.external.publicUrl | default $vm.external.url }}
+{{- with $vm.external.grafanaUrl }}
+       Grafana: {{ $vm.external.grafanaPublicUrl | default . }}
+{{- end }}
+{{- end }}
+{{- if eq $vm.mode "bundled" }}
+       VMUI:    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "victoriametrics") }} 8428:8428
+{{- end }}
+{{- end }}
+{{- $j := .Values.backends.jaeger }}
+{{- if $j.enabled }}
+   * jaeger ({{ $j.mode }})
+{{- if eq $j.mode "bundled" }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.jaeger }}
+       Jaeger UI: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $j.publicUrl "host" "jaeger" "port" 16686) }}
+{{- else }}
+       Jaeger UI: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "jaeger") }} 16686:16686
+{{- end }}
+{{- else }}
+       Jaeger UI: {{ $j.external.publicUrl | default $j.external.url }}
+{{- end }}
+{{- end }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if $vl.enabled }}
+   * victorialogs ({{ $vl.mode }})
+{{- if eq $vl.mode "bundled" }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.victorialogs }}
+       VMUI:    {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $vl.publicUrl "host" "victorialogs" "port" 9428) }}/select/vmui/
+{{- else }}
+       VMUI:    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "victorialogs") }} 9428:9428
+{{- end }}
+{{- else }}
+       VMUI:    {{ $vl.external.publicUrl | default $vl.external.url }}/select/vmui/
+{{- end }}
+{{- if and (include "signal-lab.grafanaBundled" .) $vl.grafanaPlugin }}
+       Grafana installs the {{ $vl.grafanaPlugin }} plugin at startup (needs access to grafana.com).
+{{- end }}
+{{- end }}
+{{- $e := .Values.backends.elastic }}
+{{- if $e.enabled }}
+   * elastic ({{ $e.mode }})
+{{- if eq $e.mode "bundled" }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.kibana }}
+       Kibana: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $e.kibana.publicUrl "host" "kibana" "port" 5601) }}
+{{- else }}
+       Kibana: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "kibana") }} 5601:5601
+{{- end }}
+       WARNING: the bundled Elastic stack has security disabled. Keep it off untrusted networks.
+       Kibana can take a few minutes to become ready.
+{{- else }}
+       Kibana: {{ $e.external.kibanaPublicUrl | default $e.external.kibanaUrl }}
+{{- end }}
+{{- end }}
+{{- if and (not .Values.ingress.enabled) (or (include "signal-lab.bundled" (dict "ctx" $ "id" "victoriametrics")) (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) (include "signal-lab.bundled" (dict "ctx" $ "id" "victorialogs")) (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic"))) }}
+
+   Backend links in the lab point at localhost ports, so run the port-forwards above
+   (or set the *.publicUrl values / enable the Ingress).
+{{- end }}
+
+3. Learner code runs in {{ include "signal-lab.componentName" (dict "ctx" $ "component" "runner") }} (ClusterIP only).
+{{- if .Values.runner.networkPolicy.enabled }}
+   Its NetworkPolicy only takes effect if your CNI enforces NetworkPolicy.
+{{- else }}
+   WARNING: runner.networkPolicy.enabled=false - learner code can reach anything the pod can.
+{{- end }}

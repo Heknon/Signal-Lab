@@ -1,0 +1,22 @@
+processors:
+  batch:
+    timeout: 200ms
+  tail_sampling:
+    decision_wait: 2s
+    policies:
+      - name: errors
+        type: status_code
+        status_code: {status_codes: [ERROR]}
+      - name: slow
+        type: latency
+        latency: {threshold_ms: 500}
+      - name: baseline
+        type: probabilistic
+        probabilistic: {sampling_percentage: 10}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [tail_sampling, batch]
+      exporters: [otlphttp/lab]

@@ -1,0 +1,28 @@
+apiVersion: v2
+name: signal-lab
+description: >-
+  Signal Lab, an interactive OpenTelemetry course: the lab UI/API, an isolated
+  code runner, an OpenTelemetry Collector, the Signal Shop demo scenario and
+  pluggable observability backends (VictoriaMetrics + Grafana, Jaeger, Elastic).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/Heknon/Signal-Lab
+sources:
+  - https://github.com/Heknon/Signal-Lab
+keywords:
+  - opentelemetry
+  - otel
+  - observability
+  - tracing
+  - metrics
+  - logging
+  - course
+  - training
+  - victoriametrics
+  - grafana
+  - jaeger
+  - elastic
+annotations:
+  category: Education

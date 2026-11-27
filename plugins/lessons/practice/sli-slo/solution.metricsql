@@ -1,0 +1,4 @@
+# Latency SLI: the share of storefront requests answered within 250 ms.
+sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront", le="0.25"}[5m]))
+  /
+sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))
