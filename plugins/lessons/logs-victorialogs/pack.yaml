@@ -1,0 +1,25 @@
+id: logs-victorialogs
+title: Logs with VictoriaLogs & Grafana
+description: >
+  Search, filter and count the Signal Shop's OpenTelemetry logs with LogsQL,
+  pull every line for one trace, then use Grafana Explore to find a failing
+  service from its logs. Needs the victorialogs backend.
+order: 25
+icon: search
+requires:
+  backends: [victorialogs]
+modules:
+  - id: logsql
+    title: LogsQL
+    description: >
+      Word and field filters, time ranges, stats pipes and subqueries: how to
+      find the lines you want and turn the rest into numbers.
+    assumes: [Structured logs]
+    lessons: [word-filters, field-filters, count-by, log-volume, trace-logs, error-ratio]
+  - id: grafana-logs
+    title: Grafana logs
+    description: >
+      Use Grafana Explore with the VictoriaLogs data source to track an
+      injected fault back to the service that causes it.
+    assumes: [LogsQL filters and stats]
+    lessons: [find-failing-service]

@@ -169,7 +169,7 @@ storageClassName: {{ .storageClass | quote }}
 
 {{/* Backend ids in a stable order. */}}
 {{- define "signal-lab.backendIds" -}}
-victoriametrics,jaeger,elastic
+victoriametrics,jaeger,victorialogs,elastic
 {{- end }}
 
 {{/* Comma list of enabled backend ids (SIGNAL_LAB_BACKENDS). */}}
@@ -204,6 +204,16 @@ Usage: include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")
 {{/* "true" when the bundled Grafana is deployed. */}}
 {{- define "signal-lab.grafanaBundled" -}}
 {{- if and (include "signal-lab.bundled" (dict "ctx" . "id" "victoriametrics")) .Values.backends.victoriametrics.grafana.enabled }}true{{ end }}
+{{- end }}
+
+{{/* In-cluster VictoriaLogs URL (bundled service or external.url), no trailing slash. */}}
+{{- define "signal-lab.victorialogsUrl" -}}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if eq $vl.mode "bundled" }}
+{{- include "signal-lab.svcUrl" (dict "ctx" . "component" "victorialogs" "port" 9428) }}
+{{- else }}
+{{- $vl.external.url | trimSuffix "/" }}
+{{- end }}
 {{- end }}
 
 {{/* Elastic image tag default. */}}
@@ -338,6 +348,17 @@ Usage: include "signal-lab.publicUrl" (dict "ctx" $ "override" "..." "host" "gra
   value: {{ $j.external.publicUrl | default $j.external.url | trimSuffix "/" | quote }}
 {{- end }}
 {{- end }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if $vl.enabled }}
+- name: VICTORIALOGS_URL
+  value: {{ include "signal-lab.victorialogsUrl" . | quote }}
+- name: VICTORIALOGS_PUBLIC_URL
+{{- if eq $vl.mode "bundled" }}
+  value: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $vl.publicUrl "host" "victorialogs" "port" 9428) | quote }}
+{{- else }}
+  value: {{ $vl.external.publicUrl | default $vl.external.url | trimSuffix "/" | quote }}
+{{- end }}
+{{- end }}
 {{- $e := .Values.backends.elastic }}
 {{- if $e.enabled }}
 {{- if eq $e.mode "bundled" }}
@@ -391,6 +412,15 @@ Usage: include "signal-lab.publicUrl" (dict "ctx" $ "override" "..." "host" "gra
   value: {{ $j.external.otlpEndpoint | quote }}
 {{- end }}
 {{- end }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if $vl.enabled }}
+- name: VICTORIALOGS_OTLP_URL
+{{- if eq $vl.mode "bundled" }}
+  value: {{ printf "%s/insert/opentelemetry/v1/logs" (include "signal-lab.victorialogsUrl" .) | quote }}
+{{- else }}
+  value: {{ $vl.external.otlpUrl | default (printf "%s/insert/opentelemetry/v1/logs" (include "signal-lab.victorialogsUrl" .)) | quote }}
+{{- end }}
+{{- end }}
 {{- $e := .Values.backends.elastic }}
 {{- if $e.enabled }}
 - name: ELASTIC_APM_OTLP_ENDPOINT
@@ -420,6 +450,10 @@ Usage: include "signal-lab.publicUrl" (dict "ctx" $ "override" "..." "host" "gra
 {{- if and $j.enabled (eq $j.mode "external") (or (not $j.external.url) (not $j.external.otlpEndpoint)) }}
 {{- fail "backends.jaeger.mode=external needs backends.jaeger.external.url and backends.jaeger.external.otlpEndpoint" }}
 {{- end }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if and $vl.enabled (eq $vl.mode "external") (not $vl.external.url) }}
+{{- fail "backends.victorialogs.mode=external needs backends.victorialogs.external.url" }}
+{{- end }}
 {{- $e := .Values.backends.elastic }}
 {{- if and $e.enabled (eq $e.mode "external") (or (not $e.external.elasticsearchUrl) (not $e.external.kibanaUrl) (not $e.external.apmServerUrl)) }}
 {{- fail "backends.elastic.mode=external needs backends.elastic.external.elasticsearchUrl, kibanaUrl and apmServerUrl" }}
@@ -427,7 +461,7 @@ Usage: include "signal-lab.publicUrl" (dict "ctx" $ "override" "..." "host" "gra
 {{- $names := list }}
 {{- range .Values.scenario.services }}
 {{- if not .name }}{{ fail "every scenario.services entry needs a name" }}{{ end }}
-{{- if has .name (list "lab" "runner" "collector" "victoriametrics" "grafana" "jaeger" "elasticsearch" "kibana" "apm-server") }}
+{{- if has .name (list "lab" "runner" "collector" "victoriametrics" "grafana" "jaeger" "victorialogs" "elasticsearch" "kibana" "apm-server") }}
 {{- fail (printf "scenario service name %q clashes with a chart component" .name) }}
 {{- end }}
 {{- $names = append $names .name }}

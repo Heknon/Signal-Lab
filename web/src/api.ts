@@ -43,7 +43,7 @@ export interface Health {
   tap: Record<string, number>;
 }
 
-export type LessonKind = "code" | "query" | "quiz" | "task" | "read";
+export type LessonKind = "code" | "collector" | "query" | "quiz" | "task" | "read";
 export interface LessonOutline {
   id: string; slug: string; title: string; summary: string; kind: LessonKind; minutes: number;
   requires: string[]; concepts: string[]; assumes: string[];
@@ -62,7 +62,7 @@ export interface Lesson extends LessonOutline {
   module: string; pack: string; body: string;
   checks: { id: string; title: string; type: string }[];
   hints: string[];
-  starter?: LessonFile; solution?: LessonFile;
+  starter?: LessonFile; solution?: LessonFile; traffic?: LessonFile;
   query?: { backend: string; language: string; range_s?: number; examples?: { label: string; query: string }[] };
   quiz?: { questions: QuizQuestion[] };
   tools: string[];

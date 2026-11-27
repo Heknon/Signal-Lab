@@ -12,6 +12,15 @@ RUN --mount=type=secret,id=ca_bundle,required=false \
 COPY web/ ./
 RUN bun run build
 
+# A slim Collector (38 MB vs 330 MB for contrib) for the hands-on Collector lessons.
+FROM golang:1.23-bookworm AS collector
+WORKDIR /build
+COPY deploy/collector/builder.yaml .
+RUN --mount=type=secret,id=ca_bundle,required=false \
+    if [ -f /run/secrets/ca_bundle ]; then export SSL_CERT_FILE=/run/secrets/ca_bundle; fi; \
+    go install go.opentelemetry.io/collector/cmd/builder@v0.115.0 && \
+    CGO_ENABLED=0 builder --config builder.yaml
+
 FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -26,6 +35,7 @@ COPY server/ server/
 COPY plugins/ plugins/
 COPY deploy/ deploy/
 COPY --from=web /web/dist web/dist
+COPY --from=collector /build/dist/otelcol-lab /usr/local/bin/otelcol-lab
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin lab
 USER 10001
 ENV PYTHONPATH=/app/server \

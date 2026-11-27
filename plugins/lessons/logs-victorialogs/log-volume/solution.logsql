@@ -1,0 +1,2 @@
+_time:15m -scope.name:=httpx
+| stats by (_time:1m, service.name) count() logs

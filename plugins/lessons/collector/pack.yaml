@@ -1,0 +1,21 @@
+id: collector
+title: The OpenTelemetry Collector
+description: >
+  Edit a real Collector config, send known traffic through it, and check what
+  comes out: filtering, redaction, OTTL transforms, tail sampling and
+  metrics derived from spans.
+order: 15
+icon: boxes
+modules:
+  - id: pipelines
+    title: Pipelines
+    assumes: [What OTLP is]
+    lessons: [pipelines]
+  - id: processors
+    title: Processors
+    assumes: [Collector pipelines, Span attributes]
+    lessons: [filter-noise, redact-attributes, transform-ottl]
+  - id: derived
+    title: Sampling and derived signals
+    assumes: [Collector pipelines, Sampling]
+    lessons: [tail-sampling, span-metrics]

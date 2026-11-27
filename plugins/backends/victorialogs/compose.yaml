@@ -1,0 +1,38 @@
+services:
+  victorialogs:
+    image: ${VICTORIALOGS_IMAGE:-victoriametrics/victoria-logs:v1.53.0}
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=7d
+    ports: ["9428:9428"]
+    volumes: [vl-data:/victoria-logs-data]
+    # The image is distroless (no shell, no wget), so there is no in-container
+    # healthcheck; the lab reports VictoriaLogs health from /health instead.
+    restart: unless-stopped
+
+  # Adds the VictoriaLogs data source to the Grafana from the victoriametrics
+  # plugin, or runs Grafana on its own when that plugin isn't enabled.
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.4.0}
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Installed in the background at startup (needs access to grafana.com);
+      # unlike GF_INSTALL_PLUGINS, a failed download doesn't stop Grafana.
+      GF_PLUGINS_PREINSTALL: victoriametrics-logs-datasource
+    ports: ["3000:3000"]
+    volumes:
+      - ./plugins/backends/victorialogs/grafana/datasources/victorialogs.yaml:/etc/grafana/provisioning/datasources/victorialogs.yaml:ro
+    depends_on: [victorialogs]
+
+  lab:
+    environment:
+      VICTORIALOGS_URL: http://victorialogs:9428
+
+volumes:
+  vl-data:

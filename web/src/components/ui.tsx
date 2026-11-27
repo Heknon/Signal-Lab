@@ -18,6 +18,7 @@ export function StateIcon({ state, current }: { state: LessonState; current?: bo
 
 const KIND: Record<LessonKind, { icon: ReactNode; label: string }> = {
   code: { icon: <Code2 />, label: "Code" },
+  collector: { icon: <Code2 />, label: "Collector config" },
   query: { icon: <SearchIcon />, label: "Query" },
   quiz: { icon: <HelpCircle />, label: "Quiz" },
   task: { icon: <ClipboardCheck />, label: "Hands-on" },

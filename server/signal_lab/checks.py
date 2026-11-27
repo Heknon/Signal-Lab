@@ -286,7 +286,30 @@ def check_exit(check: dict, t: dict, ctx: dict) -> dict:
     return result(check, PASS if code == 0 else FAIL, "Program finished cleanly." if code == 0 else f"Program exited with code {code}.")
 
 
+def check_budget(check: dict, t: dict, ctx: dict) -> dict:
+    """Telemetry costs money: pass only if the run stayed within limits."""
+    counts = {
+        "spans": len(t["spans"]),
+        "logs": len(t["logs"]),
+        "series": sum(len(m["series"]) for m in t["metrics"]),
+        "metrics": len(t["metrics"]),
+    }
+    over = []
+    for key, value in counts.items():
+        if key in check:
+            ok, need = _count_ok(value, check[key] if isinstance(check[key], dict) else {"max": check[key]}, default_min=0)
+            if not ok:
+                over.append(f"{value} {key} (budget: {need})")
+    if ctx.get("collecting") and not over:
+        return result(check, PENDING, "Counting…")
+    if over:
+        return result(check, FAIL, "Over budget: " + ", ".join(over) + ". " + check.get("hint", "Is every one of these worth paying for?"))
+    used = ", ".join(f"{counts[k]} {k}" for k in ("spans", "series", "logs") if k in check)
+    return result(check, PASS, f"Within budget: {used}.")
+
+
 CHECKS: dict[str, Callable[[dict, dict, dict], dict]] = {
+    "budget": check_budget,
     "span": check_span,
     "trace": check_trace,
     "metric": check_metric,

@@ -1,0 +1,3 @@
+_time:15m service.name:=checkout severity_text:=ERROR
+| sort by (_time desc) | limit 5
+| fields _time, trace_id, _msg

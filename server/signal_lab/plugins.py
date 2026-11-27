@@ -164,6 +164,7 @@ class Lesson:
             "hints": m.get("hints", []),
             "starter": self.files.get("starter"),
             "solution": self.files.get("solution"),
+            "traffic": self.files.get("traffic"),
             "query": m.get("query"),
             "quiz": quiz,
             "tools": m.get("tools", []),
@@ -226,6 +227,8 @@ def _read_lesson(pack_id: str, module: str, path: Path) -> Lesson | None:
         stem = f.stem
         if stem in ("starter", "solution") and f.is_file():
             files[stem] = {"filename": meta.get("filename", "main.py" if f.suffix == ".py" else f.name.replace(stem, "query")), "language": EXT_LANG.get(f.suffix, "text"), "content": f.read_text()}
+        elif stem == "traffic" and f.is_file():  # read-only program a collector lesson sends through your config
+            files["traffic"] = {"filename": f.name, "language": EXT_LANG.get(f.suffix, "text"), "content": f.read_text()}
     return Lesson(id=f"{pack_id}/{path.name}", pack=pack_id, slug=path.name, module=module, meta=meta, body=body.strip(), files=files)
 
 

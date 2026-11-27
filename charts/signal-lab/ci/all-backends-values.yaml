@@ -19,6 +19,13 @@ backends:
         GF_SECURITY_ADMIN_USER: admin
   jaeger:
     enabled: true
+  victorialogs:
+    enabled: true
+    retentionPeriod: 3d
+    persistence:
+      storageClass: standard
+      size: 5Gi
+    extraArgs: ["-retention.maxDiskUsagePercent=80"]
   elastic:
     enabled: true
     elasticsearch:
@@ -78,7 +85,8 @@ ingress:
     lab: lab.example.com
     grafana: grafana.example.com
     jaeger: jaeger.example.com
+    victorialogs: logs.example.com
     kibana: kibana.example.com
   tls:
     - secretName: signal-lab-tls
-      hosts: [lab.example.com, grafana.example.com, jaeger.example.com]
+      hosts: [lab.example.com, grafana.example.com, jaeger.example.com, logs.example.com]

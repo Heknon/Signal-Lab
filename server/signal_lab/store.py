@@ -46,6 +46,7 @@ class Run:
     checks: list[dict] = field(default_factory=list)
     backends: dict[str, dict] = field(default_factory=dict)
     trace_ids: set[str] = field(default_factory=set)
+    volume: dict[str, int] = field(default_factory=lambda: {"spans": 0, "metrics": 0, "logs": 0})
     version: int = 0
     _listeners: list[asyncio.Queue] = field(default_factory=list)
 
@@ -72,11 +73,13 @@ class Run:
                 continue
             self.spans.append(s)
             self.trace_ids.add(s["trace_id"])
+            self.volume["spans"] += _approx_bytes(s)
         del self.spans[:-MAX_SPANS]
         self.emit("telemetry")
 
     def add_points(self, points: list[dict]) -> None:
         for p in points:
+            self.volume["metrics"] += _approx_bytes(p)
             key = _series_key(p)
             entry = self.series.get(key)
             if entry is None:
@@ -93,6 +96,7 @@ class Run:
 
     def add_logs(self, logs: list[dict]) -> None:
         self.logs.extend(logs)
+        self.volume["logs"] += sum(_approx_bytes(r) for r in logs)
         del self.logs[:-MAX_LOGS]
         self.emit("telemetry")
 
@@ -134,12 +138,21 @@ class Run:
                 "series": len(self.series),
                 "logs": len(self.logs),
             },
+            # Rough size of what was exported (payload minus resource), to make "is this worth it?" concrete.
+            "volume": self.volume,
             "checks": self.checks,
             "backends": self.backends,
         }
 
     def snapshot(self) -> dict:
         return self.summary() | {"output": self.output, "telemetry": self.telemetry()}
+
+
+def _approx_bytes(item: dict) -> int:
+    """Approximate wire size of one item, excluding its (shared) resource."""
+    import json
+
+    return len(json.dumps({k: v for k, v in item.items() if k not in ("resource", "history")}, default=str))
 
 
 def _point_value(p: dict) -> dict:

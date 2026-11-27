@@ -52,6 +52,8 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   const [code, setCode] = useState(() => drafts.get(lesson.id) ?? starter);
   const { run, output, telemetry, error, start, busy } = useRun(lesson.id);
   const [tab, setTab] = useState<Tab>("console");
+  const [file, setFile] = useState<"main" | "traffic">("main");
+  const language = (lesson.starter?.language === "yaml" ? "yaml" : "python") as "yaml" | "python";
   const userPicked = useRef(false);
   const [focus, setFocus] = useState<{ traceId: string; spanId?: string | null } | null>(null);
   const [logSpan, setLogSpan] = useState<string | null>(null);
@@ -105,7 +107,8 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   const editor = (
     <div className="stack" style={{ height: "100%" }}>
       <div className="wb-bar">
-        <span className="file-tab"><FileCode2 />{lesson.starter?.filename ?? "main.py"}{modified && <span className="modified" title="Edited (saved in your browser)" />}</span>
+        <button className={`file-tab ${file === "main" ? "active" : ""}`} onClick={() => setFile("main")}><FileCode2 />{lesson.starter?.filename ?? "main.py"}{modified && <span className="modified" title="Edited" />}</button>
+        {lesson.traffic && <button className={`file-tab ${file === "traffic" ? "active" : ""}`} onClick={() => setFile("traffic")} title="Sent through your Collector on each run (read-only)">{lesson.traffic.filename}<span className="subtle">read-only</span></button>}
         <span className="spacer" />
         {status}
         <button className="btn btn-ghost btn-sm" onClick={() => onEdit(starter)} disabled={!modified} title="Reset to starter code"><RotateCcw />Reset</button>
@@ -114,7 +117,9 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         </button>
       </div>
       <div className="grow" style={{ minHeight: 0 }}>
-        <Editor value={code} onChange={onEdit} language="python" onRun={execute} />
+        {file === "traffic" && lesson.traffic
+          ? <Editor key="traffic" value={lesson.traffic.content} language="python" readOnly />
+          : <Editor key="main" value={code} onChange={onEdit} language={language} onRun={execute} />}
       </div>
     </div>
   );
@@ -162,7 +167,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
         {tab === "env" && (
           <div>
             <table className="env-table"><tbody>
-              <tr><td>command</td><td>{lesson.runtime.auto_instrument === false ? "" : "opentelemetry-instrument "}python {lesson.starter?.filename ?? "main.py"}</td></tr>
+              <tr><td>command</td><td>{lesson.kind === "collector" ? `otelcol --config=base.yaml --config=${lesson.starter?.filename}, then opentelemetry-instrument python ${lesson.traffic?.filename}` : `${lesson.runtime.auto_instrument === false ? "" : "opentelemetry-instrument "}python ${lesson.starter?.filename ?? "main.py"}`}</td></tr>
               {Object.entries(lesson.env).map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}
             </tbody></table>
           </div>
@@ -195,7 +200,7 @@ function SolutionPeek({ lesson, onUse }: { lesson: Lesson; onUse: (code: string)
           <button className="btn btn-sm" onClick={() => { onUse(lesson.solution!.content); setOpen(false); }}>Load into editor</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Close</button>
         </div>
-        <div style={{ height: "60vh" }}><Editor value={lesson.solution.content} language="python" readOnly /></div>
+        <div style={{ height: "60vh" }}><Editor value={lesson.solution.content} language={lesson.solution.language === "yaml" ? "yaml" : "python"} readOnly /></div>
       </div>
     </>
   );

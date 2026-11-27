@@ -4,6 +4,8 @@ backends:
     enabled: false
   jaeger:
     enabled: false
+  victorialogs:
+    enabled: false
   elastic:
     enabled: false
 scenario:

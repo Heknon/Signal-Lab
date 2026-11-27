@@ -2,6 +2,7 @@
 {{- $g := .Values.backends.victoriametrics.grafana }}
 {{- $name := include "signal-lab.componentName" (dict "ctx" $ "component" "grafana") }}
 {{- $dashboards := .Files.Glob "files/grafana/dashboards/*.json" }}
+{{- $vl := .Values.backends.victorialogs }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,6 +20,16 @@ data:
         jsonData:
           prometheusType: Prometheus
           timeInterval: 5s
+      {{- if $vl.enabled }}
+      # Needs the victoriametrics-logs-datasource plugin (see GF_PLUGINS_PREINSTALL).
+      - name: VictoriaLogs
+        uid: victorialogs
+        type: victoriametrics-logs-datasource
+        access: proxy
+        url: {{ include "signal-lab.victorialogsUrl" . }}
+        jsonData:
+          maxLines: 1000
+      {{- end }}
   {{- if $dashboards }}
   dashboards.yaml: |
     apiVersion: 1
@@ -58,7 +69,7 @@ spec:
       labels:
         {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "grafana") | nindent 8 }}
       annotations:
-        checksum/provisioning: {{ printf "%s%s" (toYaml $dashboards) (include "signal-lab.svcUrl" (dict "ctx" $ "component" "victoriametrics" "port" 8428)) | sha256sum }}
+        checksum/provisioning: {{ printf "%s%s%s" (toYaml $dashboards) (include "signal-lab.svcUrl" (dict "ctx" $ "component" "victoriametrics" "port" 8428)) (ternary (include "signal-lab.victorialogsUrl" .) "" $vl.enabled) | sha256sum }}
     spec:
       {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
       serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
@@ -94,6 +105,12 @@ spec:
               value: "false"
             - name: GF_SERVER_ROOT_URL
               value: {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $g.publicUrl "host" "grafana" "port" 3000) | quote }}
+            {{- if and $vl.enabled $vl.grafanaPlugin }}
+            # Downloaded from grafana.com in the background at startup; Grafana
+            # starts either way. Bake it into the image for offline clusters.
+            - name: GF_PLUGINS_PREINSTALL
+              value: {{ $vl.grafanaPlugin | quote }}
+            {{- end }}
             {{- range $k, $v := $g.env }}
             - name: {{ $k }}
               value: {{ $v | toString | quote }}

@@ -1,0 +1,15 @@
+processors:
+  batch:
+    timeout: 200ms
+  filter/healthz:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.route"] == "/healthz"'
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/healthz, batch]
+      exporters: [otlphttp/lab]

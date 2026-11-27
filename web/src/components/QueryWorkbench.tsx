@@ -9,7 +9,12 @@ import Chart from "./Chart";
 import Editor, { type EditorLanguage } from "./Editor";
 import { BackendLogo, Empty, Split } from "./ui";
 
-const LANG_LABEL: Record<string, string> = { metricsql: "MetricsQL", promql: "PromQL", esql: "ES|QL" };
+const LANG_LABEL: Record<string, string> = { metricsql: "MetricsQL", promql: "PromQL", esql: "ES|QL", logsql: "LogsQL" };
+const PLACEHOLDER: Record<string, string> = {
+  metricsql: "rate(http_server_request_duration_seconds_count[1m])",
+  esql: "FROM traces-apm* | LIMIT 10",
+  logsql: "_time:15m error | stats by (service.name) count()",
+};
 const RANGES = [{ s: 300, l: "5m" }, { s: 900, l: "15m" }, { s: 3600, l: "1h" }];
 
 export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; onChecks: (c: CheckResult[]) => void }) {
@@ -58,7 +63,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
         <button className="btn btn-primary btn-sm" onClick={() => execute()} disabled={busy}>{busy ? <span className="spinner" /> : <Play />}Run query<span className="kbd">{modKey}↵</span></button>
       </div>
       <div className="query-editor grow" style={{ minHeight: 0 }}>
-        <Editor value={query} onChange={onEdit} language={lang} onRun={() => execute()} compact placeholder={q.language === "esql" ? "FROM traces-apm* | LIMIT 10" : "rate(http_server_request_duration_seconds_count[1m])"} promqlUrl={lang === "metricsql" ? `${location.origin}/api/proxy/${q.backend}` : undefined} />
+        <Editor value={query} onChange={onEdit} language={lang} onRun={() => execute()} compact placeholder={PLACEHOLDER[q.language] ?? ""} promqlUrl={lang === "metricsql" ? `${location.origin}/api/proxy/${q.backend}` : undefined} />
       </div>
       {q.examples && q.examples.length > 0 && (
         <div className="query-examples">
@@ -77,7 +82,7 @@ export default function QueryWorkbench({ lesson, onChecks }: { lesson: Lesson; o
           <button className="tab" role="tab" aria-selected={view === "table"} onClick={() => setView("table")}><Table2 />Table</button>
         </div>
         <div className="right">
-          {lang === "metricsql" && (
+          {(lang === "metricsql" || q.language === "logsql") && (
             <div className="segmented" role="group" aria-label="Time range">
               {RANGES.map((r) => <button key={r.s} aria-pressed={range === r.s} onClick={() => { setRange(r.s); if (result) execute(query, r.s); }}>{r.l}</button>)}
             </div>

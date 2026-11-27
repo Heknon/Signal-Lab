@@ -52,6 +52,13 @@ class Settings:
     # Faults a lesson injects are cleared automatically after this long.
     fault_ttl_s: int = field(default_factory=lambda: int(os.getenv("SIGNAL_LAB_FAULT_TTL", "900")))
 
+    # Where a lesson's sandbox Collector (in the runner) sends its output.
+    tap_url: str = field(default_factory=lambda: os.getenv("SIGNAL_LAB_TAP_URL", ""))
+
+    @property
+    def effective_tap_url(self) -> str:
+        return self.tap_url or f"http://127.0.0.1:{self.port}/tap"
+
     @property
     def effective_otlp_endpoint(self) -> str:
         return self.otlp_endpoint or f"http://127.0.0.1:{self.port}/tap"

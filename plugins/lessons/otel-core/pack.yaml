@@ -37,8 +37,3 @@ modules:
     description: Configure the SDK yourself, choose what to keep with samplers, and reshape metrics with views.
     assumes: [Creating spans, Creating metrics]
     lessons: [manual-setup, sampling, views]
-  - id: collector
-    title: The Collector
-    description: Receivers, processors, exporters and pipelines, using this lab's own Collector as the example.
-    assumes: [What OTLP is]
-    lessons: [collector-pipelines]

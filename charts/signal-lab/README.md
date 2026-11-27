@@ -14,6 +14,7 @@ through an OpenTelemetry Collector into real observability backends.
 | `scenario` | one Deployment + Service per shop service | The Signal Shop: storefront, checkout, inventory, payments, loadgen. |
 | `victoriametrics` | StatefulSet + Grafana Deployment | Bundled or external. Enabled by default. |
 | `jaeger` | Deployment | Bundled (in-memory) or external. Enabled by default. |
+| `victorialogs` | StatefulSet | Bundled or external. Enabled by default. Added to the bundled Grafana as a data source. |
 | `elastic` | Elasticsearch StatefulSet, Kibana and APM Server Deployments | Bundled or external. **Disabled by default** (the bundled stack needs about 3 GiB of memory). |
 
 The Collector config files under `files/collector/` are copies of
@@ -51,6 +52,16 @@ no authentication), plus Kibana and APM Server. It is meant for a personal lab o
 Never expose it to a network you do not trust. Tune `backends.elastic.elasticsearch.heap`
 and `resources` together (heap of about half the memory limit).
 
+## VictoriaLogs in Grafana
+
+When the bundled Grafana runs and `backends.victorialogs` is enabled (bundled or
+external), the chart provisions a `VictoriaLogs` data source (uid `victorialogs`) and
+sets `GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource`, so Grafana downloads the
+data source plugin from grafana.com at startup. Without access to grafana.com, Grafana
+still starts but the data source shows as unavailable: use a Grafana image with the
+plugin baked in and set `backends.victorialogs.grafanaPlugin=""`. VMUI
+(`<VictoriaLogs URL>/select/vmui/`) works either way.
+
 ## External backends
 
 Point the lab and the Collector at backends you already run:
@@ -73,6 +84,12 @@ backends:
       url: http://jaeger-query.tracing:16686
       publicUrl: https://jaeger.example.com
       otlpEndpoint: jaeger-collector.tracing:4317
+  victorialogs:
+    mode: external
+    external:
+      url: http://victorialogs.logging:9428            # queries
+      # otlpUrl defaults to <url>/insert/opentelemetry/v1/logs
+      publicUrl: https://logs.example.com               # VMUI links
   elastic:
     enabled: true
     mode: external
@@ -109,6 +126,7 @@ ingress:
     lab: lab.example.com
     grafana: grafana.example.com   # bundled Grafana
     jaeger: jaeger.example.com     # bundled Jaeger
+    victorialogs: ""               # bundled VMUI has no auth and serves the ingest API too
     kibana: ""                     # bundled Kibana has no auth; leave it off unless the network is trusted
   tls:
     - secretName: signal-lab-tls
@@ -116,9 +134,10 @@ ingress:
 ```
 
 The browser links the lab shows (`GRAFANA_PUBLIC_URL`, `JAEGER_PUBLIC_URL`,
-`KIBANA_PUBLIC_URL`) follow the Ingress hosts, with `https` for hosts listed under
-`tls`. Override them with `backends.victoriametrics.grafana.publicUrl`,
-`backends.jaeger.publicUrl` and `backends.elastic.kibana.publicUrl`.
+`VICTORIALOGS_PUBLIC_URL`, `KIBANA_PUBLIC_URL`) follow the Ingress hosts, with `https`
+for hosts listed under `tls`. Override them with
+`backends.victoriametrics.grafana.publicUrl`, `backends.jaeger.publicUrl`,
+`backends.victorialogs.publicUrl` and `backends.elastic.kibana.publicUrl`.
 
 The bundled Grafana gives anonymous visitors the Admin role, as the compose stack
 does. Set `backends.victoriametrics.grafana.anonymousAdmin=false` before putting it on
@@ -315,6 +334,30 @@ done
 | `backends.jaeger.external.url` | string | `""` | In-cluster URL of the Jaeger query service (e.g. `http://jaeger-query.tracing:16686`). |
 | `backends.jaeger.external.publicUrl` | string | `""` | Browser URL of the Jaeger UI. Defaults to `url`. |
 | `backends.jaeger.external.otlpEndpoint` | string | `""` | OTLP/gRPC endpoint the Collector exports traces to, as `host:port`. |
+| `backends.victorialogs.enabled` | bool | `true` | Enable the VictoriaLogs backend. |
+| `backends.victorialogs.mode` | string | `"bundled"` | `bundled` deploys VictoriaLogs; `external` uses `external.*` URLs. |
+| `backends.victorialogs.image.registry` | string | `"docker.io"` | Image registry. |
+| `backends.victorialogs.image.repository` | string | `"victoriametrics/victoria-logs"` | Image repository. |
+| `backends.victorialogs.image.tag` | string | `"v1.53.0"` | Image tag. |
+| `backends.victorialogs.image.digest` | string | `""` | Image digest. |
+| `backends.victorialogs.image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy. |
+| `backends.victorialogs.retentionPeriod` | string | `"7d"` | How long VictoriaLogs keeps logs (`-retentionPeriod`, at least `1d`). |
+| `backends.victorialogs.extraArgs` | list | `[]` | Extra command-line flags, e.g. `["-retention.maxDiskUsagePercent=80"]`. |
+| `backends.victorialogs.publicUrl` | string | `""` | Browser URL of VictoriaLogs (VMUI links). Defaults to the `ingress.hosts.victorialogs` host, else `http://localhost:9428` (reach it with `kubectl port-forward`). |
+| `backends.victorialogs.grafanaPlugin` | string | `"victoriametrics-logs-datasource"` | Grafana plugin installed in the bundled Grafana (`GF_PLUGINS_PREINSTALL`) for the VictoriaLogs data source. Needs access to grafana.com; `""` skips it (e.g. a Grafana image that already has the plugin). |
+| `backends.victorialogs.persistence.enabled` | bool | `true` | Store data on a PersistentVolumeClaim. When false, an emptyDir is used. |
+| `backends.victorialogs.persistence.storageClass` | string | `""` | StorageClass. `""` uses the cluster default; `"-"` disables dynamic provisioning. |
+| `backends.victorialogs.persistence.accessModes` | list | `["ReadWriteOnce"]` | Access modes. |
+| `backends.victorialogs.persistence.size` | string | `"10Gi"` | Volume size. |
+| `backends.victorialogs.resources` | object | `see values.yaml` | Resource requests and limits. |
+| `backends.victorialogs.podSecurityContext` | object | `see values.yaml` | Pod security context. |
+| `backends.victorialogs.securityContext` | object | `see values.yaml` | Container security context. |
+| `backends.victorialogs.nodeSelector` | object | `{}` | Node selector. |
+| `backends.victorialogs.tolerations` | list | `[]` | Tolerations. |
+| `backends.victorialogs.affinity` | object | `{}` | Affinity rules. |
+| `backends.victorialogs.external.url` | string | `""` | In-cluster URL of your VictoriaLogs, for queries (e.g. `http://victorialogs.logging:9428`). |
+| `backends.victorialogs.external.otlpUrl` | string | `""` | OTLP logs ingest URL. Defaults to `<url>/insert/opentelemetry/v1/logs`. |
+| `backends.victorialogs.external.publicUrl` | string | `""` | Browser URL of VictoriaLogs (VMUI). Defaults to `url`. |
 | `backends.elastic.enabled` | bool | `false` | Enable the Elastic backend. |
 | `backends.elastic.mode` | string | `"bundled"` | `bundled` deploys a single-node stack; `external` uses `external.*`. WARNING: the bundled stack runs with security DISABLED (no TLS, no auth). It is for a personal lab only. Never expose it outside the cluster. |
 | `backends.elastic.version` | string | `"8.17.4"` | Elastic stack version, used as the tag for all three images unless they set their own. |
@@ -376,5 +419,6 @@ done
 | `ingress.hosts.lab` | string | `"signal-lab.local"` | Host of the lab UI. Empty creates a rule that matches any host. |
 | `ingress.hosts.grafana` | string | `""` | Host of Grafana (bundled VictoriaMetrics backend). Empty leaves Grafana off the Ingress. |
 | `ingress.hosts.jaeger` | string | `""` | Host of the Jaeger UI (bundled Jaeger). Empty leaves Jaeger off the Ingress. |
+| `ingress.hosts.victorialogs` | string | `""` | Host of VMUI (bundled VictoriaLogs). Empty leaves VictoriaLogs off the Ingress. VictoriaLogs has no authentication and also serves its ingest API: only expose it on a trusted network. |
 | `ingress.hosts.kibana` | string | `""` | Host of Kibana (bundled Elastic). Empty leaves Kibana off the Ingress. The bundled Elastic stack has no authentication: only expose it on a trusted network. |
 | `ingress.tls` | list | `[]` | TLS blocks, e.g. `[{secretName: signal-lab-tls, hosts: [signal-lab.example.com]}]`. Public URLs switch to https for hosts listed here. |

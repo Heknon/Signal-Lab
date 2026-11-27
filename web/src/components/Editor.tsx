@@ -38,7 +38,7 @@ const theme = EditorView.theme({
   ".cm-lintRange-error": { backgroundImage: "none", textDecoration: "underline wavy var(--err)" },
 });
 
-export type EditorLanguage = "python" | "metricsql" | "promql" | "esql" | "yaml" | "text";
+export type EditorLanguage = "python" | "metricsql" | "promql" | "esql" | "logsql" | "yaml" | "text";
 
 interface Props {
   value: string;

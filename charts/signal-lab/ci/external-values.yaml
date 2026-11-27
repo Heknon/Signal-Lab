@@ -20,6 +20,12 @@ backends:
       url: http://jaeger-query.tracing:16686
       publicUrl: https://jaeger.example.com
       otlpEndpoint: jaeger-collector.tracing:4317
+  victorialogs:
+    enabled: true
+    mode: external
+    external:
+      url: http://victorialogs.logging:9428
+      publicUrl: https://logs.example.com
   elastic:
     enabled: true
     mode: external

@@ -55,6 +55,49 @@ spec:
             {{- end }}
             - name: SIGNAL_LAB_RUNNER_URL
               value: {{ include "signal-lab.svcUrl" (dict "ctx" $ "component" "runner" "port" .Values.runner.service.port) | quote }}
+            {{- $auth := $l.auth }}
+            - name: SIGNAL_LAB_AUTH
+              value: {{ $auth.mode | quote }}
+            - name: SIGNAL_LAB_SIGNUP
+              value: {{ $auth.signup | quote }}
+            - name: SIGNAL_LAB_COOKIE_SECURE
+              value: {{ $auth.cookieSecure | toString | quote }}
+            - name: SIGNAL_LAB_SCENARIO_CONTROL
+              value: {{ $auth.scenarioControl | quote }}
+            - name: SIGNAL_LAB_FAULT_TTL
+              value: {{ $auth.faultTtl | toString | quote }}
+            {{- if $auth.admin.username }}
+            - name: SIGNAL_LAB_ADMIN_USERNAME
+              value: {{ $auth.admin.username | quote }}
+            {{- if or $auth.admin.existingSecret $auth.admin.password }}
+            - name: SIGNAL_LAB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $auth.admin.existingSecret | default (include "signal-lab.componentName" (dict "ctx" $ "component" "admin")) }}
+                  key: {{ if $auth.admin.existingSecret }}{{ $auth.admin.existingSecretKey }}{{ else }}password{{ end }}
+            {{- end }}
+            {{- end }}
+            {{- $pg := .Values.postgres }}
+            {{- if $pg.enabled }}
+            {{- if eq $pg.mode "bundled" }}
+            - name: SL_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pg.auth.existingSecret | default (include "signal-lab.componentName" (dict "ctx" $ "component" "postgres")) }}
+                  key: {{ if $pg.auth.existingSecret }}{{ $pg.auth.existingSecretKey }}{{ else }}password{{ end }}
+            - name: SIGNAL_LAB_DATABASE_URL
+              value: {{ printf "postgresql://%s:$(SL_PG_PASSWORD)@%s:5432/%s" $pg.auth.username (include "signal-lab.componentName" (dict "ctx" $ "component" "postgres")) $pg.auth.database | quote }}
+            {{- else if $pg.external.existingSecret }}
+            - name: SIGNAL_LAB_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $pg.external.existingSecret }}
+                  key: {{ $pg.external.existingSecretKey }}
+            {{- else }}
+            - name: SIGNAL_LAB_DATABASE_URL
+              value: {{ required "postgres.external.url or postgres.external.existingSecret is required when postgres.mode=external" $pg.external.url | quote }}
+            {{- end }}
+            {{- end }}
             - name: SIGNAL_LAB_RUNS_ENABLED
               value: {{ $l.runs.enabled | toString | quote }}
             - name: SIGNAL_LAB_RUN_TIMEOUT

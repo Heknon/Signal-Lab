@@ -169,7 +169,7 @@ export default function LessonPage() {
             ) : !complete && (
               <button className="btn btn-ghost btn-sm" onClick={() => { progress.setKnown([id], true); if (neighbours.next) nav(`/learn/${neighbours.next.id}`); }} title="Mark as known and move on"><SkipForward />I know this</button>
             )}
-            {l.solution && l.kind === "code" && <button className="btn btn-ghost btn-sm" onClick={() => window.dispatchEvent(new Event("sl:show-solution"))}><Eye />Solution</button>}
+            {l.solution && (l.kind === "code" || l.kind === "collector") && <button className="btn btn-ghost btn-sm" onClick={() => window.dispatchEvent(new Event("sl:show-solution"))}><Eye />Solution</button>}
           </div>
           {locked && (
             <div className="scenario-banner"><Lock /><span>This track needs the <b>{flat?.pack.missing.backends.join(", ")}</b> backend plugin. You can read along, but queries and checks won't work until it's enabled.</span></div>
@@ -195,7 +195,7 @@ export default function LessonPage() {
 
   let workbench: React.ReactNode = null;
   if (l) {
-    if (l.kind === "code") workbench = <CodeWorkbench lesson={l} onChecks={onChecks} />;
+    if (l.kind === "code" || l.kind === "collector") workbench = <CodeWorkbench lesson={l} onChecks={onChecks} />;
     else if (l.kind === "query" && l.query) workbench = <QueryWorkbench lesson={l} onChecks={onChecks} />;
     else if (l.kind === "quiz") workbench = <QuizWorkbench lesson={l} onChecks={onChecks} />;
     else if (l.kind === "task") workbench = <TaskWorkbench lesson={l} onChecks={onChecks} />;

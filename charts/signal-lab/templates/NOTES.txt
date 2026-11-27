@@ -57,6 +57,22 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
        Jaeger UI: {{ $j.external.publicUrl | default $j.external.url }}
 {{- end }}
 {{- end }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- if $vl.enabled }}
+   * victorialogs ({{ $vl.mode }})
+{{- if eq $vl.mode "bundled" }}
+{{- if and .Values.ingress.enabled .Values.ingress.hosts.victorialogs }}
+       VMUI:    {{ include "signal-lab.publicUrl" (dict "ctx" $ "override" $vl.publicUrl "host" "victorialogs" "port" 9428) }}/select/vmui/
+{{- else }}
+       VMUI:    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "signal-lab.componentName" (dict "ctx" $ "component" "victorialogs") }} 9428:9428
+{{- end }}
+{{- else }}
+       VMUI:    {{ $vl.external.publicUrl | default $vl.external.url }}/select/vmui/
+{{- end }}
+{{- if and (include "signal-lab.grafanaBundled" .) $vl.grafanaPlugin }}
+       Grafana installs the {{ $vl.grafanaPlugin }} plugin at startup (needs access to grafana.com).
+{{- end }}
+{{- end }}
 {{- $e := .Values.backends.elastic }}
 {{- if $e.enabled }}
    * elastic ({{ $e.mode }})
@@ -72,7 +88,7 @@ Signal Lab {{ .Chart.AppVersion }} is deploying as release "{{ .Release.Name }}"
        Kibana: {{ $e.external.kibanaPublicUrl | default $e.external.kibanaUrl }}
 {{- end }}
 {{- end }}
-{{- if and (not .Values.ingress.enabled) (or (include "signal-lab.bundled" (dict "ctx" $ "id" "victoriametrics")) (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic"))) }}
+{{- if and (not .Values.ingress.enabled) (or (include "signal-lab.bundled" (dict "ctx" $ "id" "victoriametrics")) (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) (include "signal-lab.bundled" (dict "ctx" $ "id" "victorialogs")) (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic"))) }}
 
    Backend links in the lab point at localhost ports, so run the port-forwards above
    (or set the *.publicUrl values / enable the Ingress).

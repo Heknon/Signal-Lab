@@ -1,0 +1,3 @@
+_time:15m severity_text:in(WARN, ERROR)
+| stats by (service.name) count() logs
+| sort by (logs desc)

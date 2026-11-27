@@ -93,6 +93,28 @@ lab:
     # -- Default timeout for a learner run, in seconds (`SIGNAL_LAB_RUN_TIMEOUT`).
     # Capped by `runner.maxTimeout`.
     timeout: 20
+  auth:
+    # -- `accounts`: people sign in and get their own progress (needs `postgres`).
+    # `open`: no login, everyone shares one built-in account (fine for a personal lab).
+    mode: accounts
+    # -- `open`: anyone who can reach the lab may create an account. `closed`: admins
+    # create accounts on the People page. The first account is always an admin.
+    signup: open
+    # -- Mark the session cookie `Secure`. Leave on when the lab is served over HTTPS.
+    cookieSecure: true
+    admin:
+      # -- Create (or promote) this admin account at start-up.
+      username: ""
+      # -- Its password. Prefer `existingSecret`.
+      password: ""
+      # -- Secret holding the admin password.
+      existingSecret: ""
+      # -- Key in `existingSecret`.
+      existingSecretKey: password
+    # -- Who may change the shared scenario's faults and traffic: `everyone` or `admins`.
+    scenarioControl: everyone
+    # -- Seconds after which faults injected by a lesson are cleared automatically.
+    faultTtl: 900
   service:
     # -- Service type.
     type: ClusterIP
@@ -266,6 +288,79 @@ collector:
 # ---------------------------------------------------------------------------
 # Scenario: the Signal Shop (auto-instrumented demo services)
 # ---------------------------------------------------------------------------
+# Postgres stores accounts, progress, editor drafts and run history.
+postgres:
+  # -- Use Postgres. When false the lab keeps that state in memory (lost on restart).
+  enabled: true
+  # -- `bundled` runs a single Postgres pod; `external` uses `external.*`.
+  mode: bundled
+  image:
+    # -- Image registry.
+    registry: docker.io
+    # -- Image repository.
+    repository: postgres
+    # -- Image tag.
+    tag: 17-alpine
+    # -- Image digest.
+    digest: ""
+    # -- Image pull policy.
+    pullPolicy: IfNotPresent
+  auth:
+    # -- Database user.
+    username: signallab
+    # -- Database name.
+    database: signallab
+    # -- Password. Generated (and kept across upgrades) when empty.
+    password: ""
+    # -- Existing Secret with the password.
+    existingSecret: ""
+    # -- Key in `existingSecret`.
+    existingSecretKey: password
+  external:
+    # -- Connection URL, e.g. `postgresql://user:pass@host:5432/signallab`. Prefer `existingSecret`.
+    url: ""
+    # -- Existing Secret holding the connection URL.
+    existingSecret: ""
+    # -- Key in `existingSecret`.
+    existingSecretKey: url
+  persistence:
+    # -- Store data on a PersistentVolumeClaim. When false, an emptyDir is used.
+    enabled: true
+    # -- StorageClass. `""` uses the cluster default; `"-"` disables dynamic provisioning.
+    storageClass: ""
+    # -- Access modes.
+    accessModes: [ReadWriteOnce]
+    # -- Volume size.
+    size: 2Gi
+  # -- Resource requests and limits.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Pod security context.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 70
+    runAsGroup: 70
+    fsGroup: 70
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Container security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  # -- Node selector.
+  nodeSelector: {}
+  # -- Tolerations.
+  tolerations: []
+  # -- Affinity.
+  affinity: {}
+
 scenario:
   # -- Deploy the Signal Shop scenario.
   enabled: true
@@ -501,6 +596,79 @@ backends:
       # -- OTLP/gRPC endpoint the Collector exports traces to, as `host:port`.
       otlpEndpoint: ""
 
+  # VictoriaLogs (logs), queried with LogsQL. Added as a data source to the bundled Grafana.
+  victorialogs:
+    # -- Enable the VictoriaLogs backend.
+    enabled: true
+    # -- `bundled` deploys VictoriaLogs; `external` uses `external.*` URLs.
+    mode: bundled
+    image:
+      # -- Image registry.
+      registry: docker.io
+      # -- Image repository.
+      repository: victoriametrics/victoria-logs
+      # -- Image tag.
+      tag: v1.53.0
+      # -- Image digest.
+      digest: ""
+      # -- Image pull policy.
+      pullPolicy: IfNotPresent
+    # -- How long VictoriaLogs keeps logs (`-retentionPeriod`, at least `1d`).
+    retentionPeriod: 7d
+    # -- Extra command-line flags, e.g. `["-retention.maxDiskUsagePercent=80"]`.
+    extraArgs: []
+    # -- Browser URL of VictoriaLogs (VMUI links). Defaults to the `ingress.hosts.victorialogs` host,
+    # else `http://localhost:9428` (reach it with `kubectl port-forward`).
+    publicUrl: ""
+    # -- Grafana plugin installed in the bundled Grafana (`GF_PLUGINS_PREINSTALL`) for the
+    # VictoriaLogs data source. Needs access to grafana.com; `""` skips it (e.g. a Grafana image
+    # that already has the plugin).
+    grafanaPlugin: victoriametrics-logs-datasource
+    persistence:
+      # -- Store data on a PersistentVolumeClaim. When false, an emptyDir is used.
+      enabled: true
+      # -- StorageClass. `""` uses the cluster default; `"-"` disables dynamic provisioning.
+      storageClass: ""
+      # -- Access modes.
+      accessModes: [ReadWriteOnce]
+      # -- Volume size.
+      size: 10Gi
+    # -- Resource requests and limits.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # -- Pod security context.
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      runAsGroup: 65534
+      fsGroup: 65534
+      seccompProfile:
+        type: RuntimeDefault
+    # -- Container security context.
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    # -- Node selector.
+    nodeSelector: {}
+    # -- Tolerations.
+    tolerations: []
+    # -- Affinity rules.
+    affinity: {}
+    external:
+      # -- In-cluster URL of your VictoriaLogs, for queries (e.g. `http://victorialogs.logging:9428`).
+      url: ""
+      # -- OTLP logs ingest URL. Defaults to `<url>/insert/opentelemetry/v1/logs`.
+      otlpUrl: ""
+      # -- Browser URL of VictoriaLogs (VMUI). Defaults to `url`.
+      publicUrl: ""
+
   # Elastic Observability (Elasticsearch, Kibana, APM Server): traces, metrics and logs.
   # Off by default: the bundled stack wants roughly 3 GiB of memory.
   elastic:
@@ -699,6 +867,9 @@ ingress:
     grafana: ""
     # -- Host of the Jaeger UI (bundled Jaeger). Empty leaves Jaeger off the Ingress.
     jaeger: ""
+    # -- Host of VMUI (bundled VictoriaLogs). Empty leaves VictoriaLogs off the Ingress.
+    # VictoriaLogs has no authentication and also serves its ingest API: only expose it on a trusted network.
+    victorialogs: ""
     # -- Host of Kibana (bundled Elastic). Empty leaves Kibana off the Ingress.
     # The bundled Elastic stack has no authentication: only expose it on a trusted network.
     kibana: ""

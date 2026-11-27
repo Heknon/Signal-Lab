@@ -7,6 +7,9 @@
 {{- if and $ing.hosts.jaeger (include "signal-lab.bundled" (dict "ctx" $ "id" "jaeger")) }}
 {{- $rules = append $rules (dict "host" $ing.hosts.jaeger "component" "jaeger" "port" 16686) }}
 {{- end }}
+{{- if and $ing.hosts.victorialogs (include "signal-lab.bundled" (dict "ctx" $ "id" "victorialogs")) }}
+{{- $rules = append $rules (dict "host" $ing.hosts.victorialogs "component" "victorialogs" "port" 9428) }}
+{{- end }}
 {{- if and $ing.hosts.kibana (include "signal-lab.bundled" (dict "ctx" $ "id" "elastic")) }}
 {{- $rules = append $rules (dict "host" $ing.hosts.kibana "component" "kibana" "port" 5601) }}
 {{- end }}

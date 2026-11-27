@@ -26,7 +26,9 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
     ports: ["3000:3000"]
     volumes:
-      - ./plugins/backends/victoriametrics/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      # Mounted file by file so other plugins (victorialogs) can add their own
+      # data source next to it: a file can't be mounted into a read-only dir.
+      - ./plugins/backends/victoriametrics/grafana/datasources/victoriametrics.yaml:/etc/grafana/provisioning/datasources/victoriametrics.yaml:ro
       - ./plugins/backends/victoriametrics/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on: [victoriametrics]
 

@@ -216,10 +216,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         env = run_env(lesson, run.id)
         run.status = "running"
         run.emit("status")
+        code, extra = run.code, {}
+        if lesson.kind == "collector":
+            # The learner wrote a Collector config; the lesson's traffic script runs through it.
+            traffic = lesson.files.get("traffic")
+            code = traffic["content"] if traffic else "print('this lesson has no traffic.py')"
+            extra = {"collector_config": run.code, "tap_url": settings.effective_tap_url, "settle_s": float((lesson.meta.get("collector") or {}).get("settle_s", 3))}
         events = (
-            runner.execute_remote(settings.runner_url, run.code, env, timeout=timeout, auto_instrument=auto)
+            runner.execute_remote(settings.runner_url, code, env, timeout=timeout, auto_instrument=auto, **extra)
             if settings.runner_url
-            else runner.execute_local(run.code, env, timeout=timeout, auto_instrument=auto)
+            else runner.execute_local(code, env, timeout=timeout, auto_instrument=auto, **extra)
         )
         try:
             async for ev in events:
@@ -302,7 +308,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/lessons/{pack}/{slug}")
     async def lesson(pack: str, slug: str) -> dict:
         lesson = lesson_or_404(f"{pack}/{slug}")
-        return lesson.public() | {"env": visible_env(lesson) if lesson.kind == "code" else {}}
+        return lesson.public() | {"env": visible_env(lesson) if lesson.kind in ("code", "collector") else {}}
 
     @app.get("/api/collector")
     async def collector_config() -> dict:

@@ -56,7 +56,7 @@ first-lesson/
 ---
 title: Your first span
 summary: One line, shown under the title and in lists.
-kind: code              # code | query | quiz | task | read
+kind: code              # code | collector | query | quiz | task | read
 minutes: 5
 concepts: [span, tracer]      # searchable in the command palette
 assumes: [Basic Python]       # what you should know already
@@ -169,7 +169,7 @@ Passes if **any** trace in the run satisfies all conditions:
 ```yaml
 query:
   backend: victoriametrics        # any enabled backend with a query adapter
-  language: metricsql             # metricsql | esql
+  language: metricsql             # metricsql | esql | logsql
   range_s: 900
   examples: [{label: "Request rate", query: "sum(rate(http_server_request_duration_seconds_count[1m]))"}]
 checks:
@@ -183,6 +183,23 @@ checks:
     ignore_columns: []
     expect: {rows: {min: 1}, columns: [service.name]}
     hint: Shown when the result differs.
+```
+
+#### Collector lessons
+
+`kind: collector` lessons have the learner edit a Collector config instead of
+Python. The folder holds `starter.yaml`, `solution.yaml` and a read-only
+`traffic.py`. On each run, the runner validates the config, starts a slim
+Collector built from `deploy/collector/builder.yaml`, sends `traffic.py`'s
+telemetry through it, waits `collector.settle_s`, then shuts it down so
+buffers flush. The learner's file is merged with a base config that provides
+the `otlp` receiver and the `otlphttp/lab` exporter (the inspector). Grade the
+output with ordinary `span` / `metric` / `log` checks.
+
+```yaml
+kind: collector
+filename: collector.yaml
+collector: {settle_s: 3}
 ```
 
 #### Quizzes

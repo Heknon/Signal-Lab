@@ -1,0 +1,13 @@
+processors:
+  batch:
+    timeout: 200ms
+
+# TODO: a spanmetrics connector, fed by the traces pipeline,
+#       feeding a new metrics pipeline that exports to otlphttp/lab
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab]

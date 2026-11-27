@@ -8,6 +8,7 @@ their solution query.
     python scripts/test_lessons.py                       # all lessons, http://localhost:8000
     python scripts/test_lessons.py otel-core/counters    # just one
     LAB_URL=http://lab.example python scripts/test_lessons.py
+    LAB_USER=ci LAB_PASSWORD=... python scripts/test_lessons.py   # labs with accounts
 """
 
 from __future__ import annotations
@@ -16,14 +17,16 @@ import json
 import os
 import sys
 import time
+import http.cookiejar
 import urllib.request
 
 LAB = os.getenv("LAB_URL", "http://localhost:8000").rstrip("/")
+OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 
 def call(path: str, body: dict | None = None) -> dict:
     req = urllib.request.Request(LAB + path, data=json.dumps(body).encode() if body is not None else None, headers={"content-type": "application/json"}, method="POST" if body is not None else "GET")
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with OPENER.open(req, timeout=60) as r:
         return json.load(r)
 
 
@@ -40,6 +43,8 @@ def run(lesson: str, code: str) -> dict:
 
 def main() -> int:
     wanted = set(sys.argv[1:])
+    if os.getenv("LAB_USER"):
+        call("/api/auth/login", {"username": os.environ["LAB_USER"], "password": os.environ.get("LAB_PASSWORD", "")})
     course = call("/api/course")
     failures = 0
     for pack in course:
@@ -50,7 +55,7 @@ def main() -> int:
                     continue
                 lesson = call(f"/api/lessons/{lid}")
                 kind = lesson["kind"]
-                if kind == "code":
+                if kind in ("code", "collector"):
                     if not lesson.get("solution"):
                         print(f"SKIP {lid}: no solution")
                         continue

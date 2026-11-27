@@ -1,0 +1,101 @@
+{{- if include "signal-lab.bundled" (dict "ctx" $ "id" "victorialogs") }}
+{{- $vl := .Values.backends.victorialogs }}
+{{- $name := include "signal-lab.componentName" (dict "ctx" $ "component" "victorialogs") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "victorialogs") | nindent 2 }}
+spec:
+  replicas: 1
+  serviceName: {{ $name }}
+  selector:
+    matchLabels:
+      {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victorialogs") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "signal-lab.componentLabels" (dict "ctx" $ "component" "victorialogs") | nindent 8 }}
+    spec:
+      {{- with include "signal-lab.imagePullSecrets" . }}{{- . | trim | nindent 6 }}{{- end }}
+      serviceAccountName: {{ include "signal-lab.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      {{- with $vl.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: victorialogs
+          image: {{ include "signal-lab.image" (dict "image" $vl.image "global" .Values.global "defaultTag" "latest") | quote }}
+          imagePullPolicy: {{ $vl.image.pullPolicy }}
+          args:
+            - -storageDataPath=/victoria-logs-data
+            - -retentionPeriod={{ $vl.retentionPeriod }}
+            {{- with $vl.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 9428
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- with $vl.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $vl.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /victoria-logs-data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not $vl.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with include "signal-lab.scheduling" $vl }}{{- . | trim | nindent 6 }}{{- end }}
+  {{- if $vl.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victorialogs") | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml $vl.persistence.accessModes | nindent 10 }}
+        {{- with include "signal-lab.storageClass" $vl.persistence }}{{- . | trim | nindent 8 }}{{- end }}
+        resources:
+          requests:
+            storage: {{ $vl.persistence.size }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  {{- include "signal-lab.metadata" (dict "ctx" $ "component" "victorialogs") | nindent 2 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "signal-lab.componentSelectorLabels" (dict "ctx" $ "component" "victorialogs") | nindent 4 }}
+  ports:
+    - name: http
+      port: 9428
+      targetPort: http
+      protocol: TCP
+      appProtocol: http
+{{- end }}
