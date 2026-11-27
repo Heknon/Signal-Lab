@@ -1,0 +1,13 @@
+id: otel-core
+title: OpenTelemetry Foundations
+description: >
+  Traces, metrics and logs from first principles, written with the real
+  OpenTelemetry Python SDK. Works with any backend.
+order: 10
+icon: radio
+modules:
+  - id: traces
+    title: Traces
+    description: Spans, their shape, and how they describe a request.
+    assumes: [Basic Python]
+    lessons: [first-span, nested-spans]

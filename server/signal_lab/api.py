@@ -1,0 +1,624 @@
+"""The Signal Lab API: lessons, runs, the telemetry tap, queries and the scenario."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import math
+import time
+from pathlib import Path
+from typing import Any
+
+import httpx
+import yaml
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from . import __version__, checks, otlp, runner
+from .config import Settings
+from .plugins import Registry
+from .store import RUN_ATTR, Run, Store
+
+log = logging.getLogger("signal_lab")
+
+
+class RunRequest(BaseModel):
+    lesson: str
+    code: str
+
+
+class QueryRequest(BaseModel):
+    backend: str
+    language: str
+    query: str
+    lesson: str | None = None
+    range_s: int = 900
+
+
+class AnswerRequest(BaseModel):
+    question: str
+    answer: str | list[str]
+
+
+class ChaosRequest(BaseModel):
+    latency_ms: int | None = None
+    error_rate: float | None = None
+
+
+class LoadRequest(BaseModel):
+    rps: float
+
+
+def deep_merge(a: dict, b: dict) -> dict:
+    out = dict(a)
+    for k, v in b.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings()
+    registry = Registry.load(settings.plugins_dir, settings.backends, settings.lesson_packs, settings.scenarios)
+    store = Store()
+    http = httpx.AsyncClient(timeout=3.0)
+    health_cache: dict[str, Any] = {"t": 0.0, "value": None}
+
+    app = FastAPI(title="Signal Lab", version=__version__)
+    app.state.settings, app.state.registry, app.state.store = settings, registry, store
+
+    for err in registry.errors:
+        log.error("plugin error: %s", err)
+
+    @app.on_event("shutdown")
+    async def _shutdown() -> None:
+        await http.aclose()
+        for b in registry.enabled_backends:
+            if b.adapter:
+                await b.adapter.close()
+
+    # ------------------------------------------------------------ helpers
+    mtime = {"v": registry.lessons_mtime() if settings.reload else 0.0}
+
+    def maybe_reload() -> None:
+        if not settings.reload:
+            return
+        current = registry.lessons_mtime()
+        if current != mtime["v"]:
+            mtime["v"] = current
+            registry.reload_packs(settings.lesson_packs)
+            log.info("lesson packs reloaded")
+
+    def lesson_or_404(lesson_id: str):
+        maybe_reload()
+        lesson = registry.lesson(lesson_id)
+        if not lesson:
+            raise HTTPException(404, f"No lesson {lesson_id}")
+        return lesson
+
+    def run_env(lesson, run_id: str) -> dict[str, str]:
+        rt = lesson.meta.get("runtime") or {}
+        service = rt.get("service", "lab-app")
+        resource = {RUN_ATTR: run_id, "signal_lab.lesson": lesson.id, "deployment.environment.name": settings.environment, "service.version": "1.0.0"}
+        env = {
+            "OTEL_SERVICE_NAME": service,
+            "OTEL_RESOURCE_ATTRIBUTES": ",".join(f"{k}={v}" for k, v in resource.items()),
+            "OTEL_EXPORTER_OTLP_ENDPOINT": settings.effective_otlp_endpoint,
+            "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+            "OTEL_TRACES_EXPORTER": "otlp",
+            "OTEL_METRICS_EXPORTER": "otlp",
+            "OTEL_LOGS_EXPORTER": "otlp",
+            "OTEL_METRIC_EXPORT_INTERVAL": "1000",
+            "OTEL_BSP_SCHEDULE_DELAY": "200",
+            "OTEL_BLRP_SCHEDULE_DELAY": "200",
+            "OTEL_SEMCONV_STABILITY_OPT_IN": "http",
+            "OTEL_PYTHON_DISABLED_INSTRUMENTATIONS": "",
+        }
+        scenario = registry.scenario()
+        if scenario:
+            env |= scenario.runner_env()
+        env |= {k: str(v) for k, v in (rt.get("env") or {}).items()}
+        return env
+
+    def visible_env(lesson) -> dict[str, str]:
+        env = run_env(lesson, "<run-id>")
+        return {k: v for k, v in env.items() if v != ""}
+
+    async def finish_with_checks(run: Run, lesson) -> None:
+        lesson_checks = [c for c in lesson.checks() if c["type"] not in checks.DEFERRED]
+        exit_seen = time.monotonic()
+        min_settle, max_settle = 1.2, float(lesson.meta.get("settle_s", 6))
+        needs_telemetry = any(c["type"] in ("span", "trace", "metric", "log") for c in lesson_checks)
+        while True:
+            ctx = {"collecting": True, "output": run.output, "exit_code": run.exit_code}
+            run.checks = checks.evaluate(lesson_checks, run.telemetry(), ctx)
+            run.emit("status")
+            elapsed = time.monotonic() - exit_seen
+            all_pass = all(c["status"] == checks.PASS for c in run.checks)
+            if elapsed >= max_settle or (elapsed >= min_settle and (all_pass or not needs_telemetry)):
+                break
+            await asyncio.sleep(0.3)
+        ctx = {"collecting": False, "output": run.output, "exit_code": run.exit_code}
+        run.checks = checks.evaluate(lesson_checks, run.telemetry(), ctx)
+        run.status = "done" if run.exit_code == 0 else "error"
+        run.emit("status")
+        asyncio.create_task(confirm_backends(run))
+
+    async def confirm_backends(run: Run) -> None:
+        """Ask each backend whether this run's telemetry landed there."""
+        targets = []
+        trace_id = run.spans[0]["trace_id"] if run.spans else None
+        metric = next(iter(run.series.values()), None)
+        for b in registry.enabled_backends:
+            caps = set(b.manifest.get("capabilities", []))
+            entry: dict[str, Any] = {"title": b.title, "signals": {}}
+            if trace_id and "traces" in caps:
+                entry["signals"]["traces"] = {"state": "pending", "trace_id": trace_id, "url": b.adapter.link("trace", {"trace_id": trace_id})}
+            if metric and "metrics" in caps:
+                entry["signals"]["metrics"] = {"state": "pending", "metric": metric["name"], "url": b.adapter.link("metric", {"name": metric["name"]})}
+            if run.logs and "logs" in caps:
+                entry["signals"]["logs"] = {"state": "pending", "url": b.adapter.link("logs", {"run_id": run.id})}
+            if entry["signals"]:
+                run.backends[b.id] = entry
+                targets.append(b)
+        if not targets:
+            return
+        run.emit("status")
+        deadline = time.monotonic() + 40
+        while time.monotonic() < deadline:
+            pending = False
+            for b in targets:
+                for signal, st in run.backends[b.id]["signals"].items():
+                    if st["state"] != "pending":
+                        continue
+                    try:
+                        if signal == "traces":
+                            found = await b.adapter.find_trace(st["trace_id"])
+                        elif signal == "metrics":
+                            found = await b.adapter.find_metric(st["metric"], metric["service"])
+                        else:
+                            found = await b.adapter.find_logs(run.id)
+                    except Exception as e:
+                        log.debug("confirm %s/%s failed: %s", b.id, signal, e)
+                        found = False
+                    if found is None:
+                        st["state"] = "unsupported"
+                    elif found:
+                        st["state"] = "found"
+                        st["after_ms"] = round((time.time() - run.created) * 1000)
+                    else:
+                        pending = True
+            run.emit("status")
+            if not pending:
+                return
+            await asyncio.sleep(2)
+        for b in targets:
+            for st in run.backends[b.id]["signals"].values():
+                if st["state"] == "pending":
+                    st["state"] = "missing"
+        run.emit("status")
+
+    async def drive(run: Run, lesson) -> None:
+        rt = lesson.meta.get("runtime") or {}
+        timeout = min(float(rt.get("timeout", settings.run_timeout)), settings.run_timeout * 2)
+        auto = bool(rt.get("auto_instrument", True))
+        env = run_env(lesson, run.id)
+        run.status = "running"
+        run.emit("status")
+        events = (
+            runner.execute_remote(settings.runner_url, run.code, env, timeout=timeout, auto_instrument=auto)
+            if settings.runner_url
+            else runner.execute_local(run.code, env, timeout=timeout, auto_instrument=auto)
+        )
+        try:
+            async for ev in events:
+                if ev["type"] == "output":
+                    line = {"stream": ev["stream"], "text": ev["text"], "t": ev.get("t")}
+                    run.output.append(line)
+                    run.emit("output", line)
+                elif ev["type"] == "start":
+                    line = {"stream": "system", "text": f"$ {ev['command']}", "t": 0}
+                    run.output.append(line)
+                    run.emit("output", line)
+                elif ev["type"] == "exit":
+                    run.exit_code = ev["code"]
+                    run.duration_ms = ev["duration_ms"]
+        except Exception as e:  # runner crashed
+            log.exception("run %s failed", run.id)
+            line = {"stream": "system", "text": f"Runner error: {e}"}
+            run.output.append(line)
+            run.emit("output", line)
+            run.exit_code = -1
+        run.status = "collecting"
+        run.emit("status")
+        await finish_with_checks(run, lesson)
+
+    # ------------------------------------------------------------ meta
+    @app.get("/api/meta")
+    async def meta() -> dict:
+        scenario = registry.scenario()
+        return {
+            "version": __version__,
+            "backends": [b.public() for b in registry.backends.values()],
+            "scenario": scenario.public() if scenario else None,
+            "runs_enabled": settings.runs_enabled,
+            "runner": "remote" if settings.runner_url else "local",
+            "otlp_endpoint": settings.effective_otlp_endpoint,
+            "collector": bool(settings.collector_health_url or settings.collector_configs),
+            "plugin_errors": registry.errors,
+            "capabilities": sorted(registry.capabilities()),
+        }
+
+    @app.get("/api/health")
+    async def health() -> dict:
+        if health_cache["value"] and time.monotonic() - health_cache["t"] < 3:
+            return health_cache["value"]
+
+        async def collector() -> dict:
+            if not settings.collector_health_url:
+                return {"ok": True, "detail": "direct (no collector)", "mode": "direct"}
+            try:
+                r = await http.get(settings.collector_health_url, timeout=2)
+                return {"ok": r.status_code == 200, "detail": f"HTTP {r.status_code}", "mode": "collector"}
+            except httpx.HTTPError as e:
+                return {"ok": False, "detail": type(e).__name__, "mode": "collector"}
+
+        async def backend(b) -> tuple[str, dict]:
+            try:
+                return b.id, await asyncio.wait_for(b.adapter.health(), timeout=4)
+            except Exception as e:
+                return b.id, {"_": {"ok": False, "detail": type(e).__name__}}
+
+        async def runner_health() -> dict:
+            if not settings.runner_url:
+                return {"ok": True, "detail": "in-process", "mode": "local"}
+            try:
+                r = await http.get(settings.runner_url.rstrip("/") + "/healthz", timeout=2)
+                return {"ok": r.status_code == 200, "detail": f"HTTP {r.status_code}", "mode": "remote"}
+            except httpx.HTTPError as e:
+                return {"ok": False, "detail": type(e).__name__, "mode": "remote"}
+
+        results = await asyncio.gather(collector(), runner_health(), *(backend(b) for b in registry.enabled_backends))
+        value = {"collector": results[0], "runner": results[1], "backends": dict(results[2:]), "tap": store.stats}
+        health_cache.update(t=time.monotonic(), value=value)
+        return value
+
+    @app.get("/api/course")
+    async def course() -> list[dict]:
+        maybe_reload()
+        return registry.course()
+
+    @app.get("/api/lessons/{pack}/{slug}")
+    async def lesson(pack: str, slug: str) -> dict:
+        lesson = lesson_or_404(f"{pack}/{slug}")
+        return lesson.public() | {"env": visible_env(lesson) if lesson.kind == "code" else {}}
+
+    @app.get("/api/collector")
+    async def collector_config() -> dict:
+        files, merged = [], {}
+        for path in settings.collector_configs:
+            p = Path(path)
+            if p.exists():
+                text = p.read_text()
+                files.append({"name": p.name, "path": str(p), "content": text})
+                try:
+                    merged = deep_merge(merged, yaml.safe_load(text) or {})
+                except yaml.YAMLError:
+                    pass
+        pipelines = (merged.get("service") or {}).get("pipelines") or {}
+        return {"files": files, "pipelines": pipelines, "components": {k: list((merged.get(k) or {}).keys()) for k in ("receivers", "processors", "exporters", "connectors", "extensions")}}
+
+    @app.get("/api/plugins")
+    async def plugins() -> dict:
+        return {
+            "backends": [b.public() | {"path": str(b.path.relative_to(settings.plugins_dir))} for b in registry.backends.values()],
+            "lesson_packs": [
+                {"id": p.id, "title": p.manifest.get("title", p.id), "description": p.manifest.get("description", ""), "lessons": len(p.lessons), "requires": p.manifest.get("requires", {}), "path": str(p.path.relative_to(settings.plugins_dir))}
+                for p in registry.packs.values()
+            ],
+            "scenarios": [s.public() | {"path": str(s.path.relative_to(settings.plugins_dir))} for s in registry.scenarios.values()],
+            "check_types": sorted(set(checks.CHECKS) | checks.DEFERRED),
+            "errors": registry.errors,
+        }
+
+    # ------------------------------------------------------------ runs
+    @app.post("/api/runs")
+    async def create_run(req: RunRequest) -> dict:
+        if not settings.runs_enabled:
+            raise HTTPException(403, "Code execution is disabled on this deployment.")
+        lesson = lesson_or_404(req.lesson)
+        if len(req.code) > 100_000:
+            raise HTTPException(413, "Code is too large.")
+        run = store.create(lesson.id, req.code)
+        asyncio.create_task(drive(run, lesson))
+        return run.summary()
+
+    @app.get("/api/runs/{run_id}")
+    async def get_run(run_id: str) -> dict:
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Unknown run")
+        return run.snapshot()
+
+    @app.get("/api/runs/{run_id}/events")
+    async def run_events(run_id: str, request: Request):
+        run = store.get(run_id)
+        if not run:
+            raise HTTPException(404, "Unknown run")
+
+        async def stream():
+            q = run.subscribe()
+            try:
+                yield f"event: snapshot\ndata: {json.dumps(run.snapshot())}\n\n"
+                last_tel, dirty_tel, dirty_status = 0.0, False, False
+                while True:
+                    try:
+                        kind, data = await asyncio.wait_for(q.get(), timeout=0.25)
+                        if kind == "output":
+                            yield f"event: output\ndata: {json.dumps(data)}\n\n"
+                        elif kind == "telemetry":
+                            dirty_tel = True
+                        elif kind == "status":
+                            dirty_status = True
+                    except asyncio.TimeoutError:
+                        pass
+                    now = time.monotonic()
+                    if dirty_tel and now - last_tel > 0.25:
+                        yield f"event: telemetry\ndata: {json.dumps(run.telemetry())}\n\n"
+                        dirty_tel, last_tel = False, now
+                    if dirty_status:
+                        yield f"event: status\ndata: {json.dumps(run.summary())}\n\n"
+                        dirty_status = False
+                    if await request.is_disconnected():
+                        break
+                    finished = run.status in ("done", "error") and all(
+                        st["state"] != "pending" for b in run.backends.values() for st in b["signals"].values()
+                    )
+                    if finished and not dirty_tel and q.empty() and time.time() - run.created > 2:
+                        # keep the stream open a little for late telemetry
+                        await asyncio.sleep(1)
+                        yield f"event: telemetry\ndata: {json.dumps(run.telemetry())}\n\n"
+                        yield f"event: status\ndata: {json.dumps(run.summary())}\n\n"
+                        yield "event: end\ndata: {}\n\n"
+                        break
+            finally:
+                run.unsubscribe(q)
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    # ------------------------------------------------------------ tap (OTLP/HTTP receiver)
+    @app.post("/tap/v1/{signal}")
+    async def tap(signal: str, request: Request) -> Response:
+        if signal not in otlp.DECODERS:
+            raise HTTPException(404)
+        body = otlp.decompress(await request.body(), request.headers.get("content-encoding"))
+        ctype = request.headers.get("content-type", "")
+        if "json" in ctype:
+            return JSONResponse({"error": "The lab tap accepts OTLP protobuf; set encoding: proto on the exporter."}, status_code=415)
+        try:
+            items = otlp.DECODERS[signal](body)
+        except Exception as e:
+            log.warning("tap: could not decode %s payload: %s", signal, e)
+            return Response(status_code=400)
+        {"traces": store.ingest_spans, "metrics": store.ingest_points, "logs": store.ingest_logs}[signal](items)
+        return Response(content=otlp.EMPTY_RESPONSES[signal], media_type="application/x-protobuf")
+
+    # ------------------------------------------------------------ queries
+    def backend_or_404(backend_id: str):
+        b = registry.backends.get(backend_id)
+        if not b or not b.enabled or not b.adapter:
+            raise HTTPException(404, f"Backend {backend_id} is not enabled")
+        return b
+
+    @app.post("/api/query")
+    async def query(req: QueryRequest) -> dict:
+        b = backend_or_404(req.backend)
+        at_ms = int(time.time() * 1000)
+        res = await b.adapter.query(req.language, req.query, at_ms=at_ms, range_s=req.range_s)
+        if res is None:
+            raise HTTPException(400, f"{b.title} does not support {req.language}")
+        out = {"result": res.to_dict(), "checks": []}
+        if req.lesson and not res.error:
+            lesson = lesson_or_404(req.lesson)
+            for c in lesson.checks():
+                if c["type"] != "query":
+                    continue
+                out["checks"].append(await grade_query(c, b, req, res, at_ms))
+        return out
+
+    async def grade_query(c: dict, b, req: QueryRequest, res, at_ms: int) -> dict:
+        must = c.get("must_include", [])
+        missing = [m for m in must if m.lower() not in req.query.lower()]
+        if missing:
+            return checks.result(c, checks.FAIL, f"Your query should use {', '.join(f'`{m}`' for m in missing)}.")
+        expect = c.get("expect", {})
+        if "rows" in expect:
+            ok, need = checks._count_ok(len(res.rows), expect["rows"])
+            if not ok:
+                return checks.result(c, checks.FAIL, f"Got {len(res.rows)} row(s), expected {need}. {c.get('hint', '')}".strip())
+        for col in expect.get("columns", []):
+            if col not in res.columns:
+                return checks.result(c, checks.FAIL, f"Result has no `{col}` column (columns: {', '.join(res.columns) or 'none'}).")
+        if c.get("reference"):
+            ref = await b.adapter.query(c.get("language", req.language), c["reference"], at_ms=at_ms, range_s=req.range_s)
+            if ref is None or ref.error:
+                return checks.result(c, checks.FAIL, "The reference query failed; is there data yet? Check the scenario traffic is running.")
+            same, why = compare_results(res, ref, c)
+            if not same:
+                return checks.result(c, checks.FAIL, why + (f" {c['hint']}" if c.get("hint") else ""))
+        return checks.result(c, checks.PASS, c.get("success", "Your query returns the right answer."))
+
+    def compare_results(res, ref, c: dict) -> tuple[bool, str]:
+        tol = float(c.get("tolerance", 0.02))
+        ignore = set(c.get("ignore_columns", []))
+
+        def norm(r) -> dict[tuple, list[float]]:
+            idx = [i for i, col in enumerate(r.columns) if col not in ignore]
+            value_cols = [i for i in idx if r.columns[i] in ("value",) or r.columns[i] in c.get("value_columns", [])]
+            key_cols = [i for i in idx if i not in value_cols]
+            out: dict[tuple, list[float]] = {}
+            for row in r.rows:
+                key = tuple(str(row[i]) for i in key_cols)
+                vals = []
+                for i in value_cols:
+                    try:
+                        vals.append(float(row[i]))
+                    except (TypeError, ValueError):
+                        vals.append(math.nan)
+                out[key] = vals
+            return out
+
+        a, b_ = norm(res), norm(ref)
+        if len(a) != len(b_):
+            return False, f"Your query returns {len(a)} row(s); the expected answer has {len(b_)}."
+        if set(a) != set(b_):
+            return False, "The rows (label sets) differ from the expected answer. Check your grouping."
+        for k, vals in a.items():
+            for x, y in zip(vals, b_[k]):
+                if math.isnan(x) and math.isnan(y):
+                    continue
+                if not math.isclose(x, y, rel_tol=tol, abs_tol=1e-9):
+                    return False, f"Values differ (got {x:.4g}, expected {y:.4g})."
+        return True, ""
+
+    @app.get("/api/suggest/{backend_id}")
+    async def suggest(backend_id: str, language: str, kind: str = "metric", prefix: str = "") -> list[str]:
+        b = backend_or_404(backend_id)
+        return await b.adapter.suggest(language, kind, prefix)
+
+    # ------------------------------------------------------------ quiz & verify
+    @app.post("/api/lessons/{pack}/{slug}/answer")
+    async def answer(pack: str, slug: str, req: AnswerRequest) -> dict:
+        lesson = lesson_or_404(f"{pack}/{slug}")
+        questions = (lesson.meta.get("quiz") or {}).get("questions", [])
+        for i, q in enumerate(questions):
+            if q.get("id", f"q{i}") == req.question:
+                expected = q["answer"]
+                correct = sorted(map(str, expected)) == sorted(map(str, req.answer)) if isinstance(expected, list) else str(req.answer).strip().lower() == str(expected).strip().lower()
+                return {"correct": correct, "explanation": q.get("explanation", "") if correct else q.get("hint", "Not quite. Look again.")}
+        raise HTTPException(404, "Unknown question")
+
+    @app.post("/api/lessons/{pack}/{slug}/verify")
+    async def verify(pack: str, slug: str) -> dict:
+        lesson = lesson_or_404(f"{pack}/{slug}")
+        out = []
+        for c in lesson.checks():
+            if c["type"] != "backend":
+                continue
+            b = registry.backends.get(c.get("backend", ""))
+            if not b or not b.enabled or not b.adapter:
+                out.append(checks.result(c, checks.FAIL, f"The `{c.get('backend')}` backend isn't enabled."))
+                continue
+            try:
+                v = await b.adapter.verify(c, {"lesson": lesson.id})
+            except Exception as e:
+                v = None
+                out.append(checks.result(c, checks.FAIL, f"Could not verify: {type(e).__name__}"))
+                continue
+            if v is None:
+                out.append(checks.result(c, checks.FAIL, f"{b.title} can't verify `{c.get('verify')}`."))
+            else:
+                out.append(checks.result(c, checks.PASS if v.passed else checks.FAIL, v.detail))
+        return {"checks": out}
+
+    # ------------------------------------------------------------ scenario
+    def scenario_or_404():
+        s = registry.scenario()
+        if not s:
+            raise HTTPException(404, "No scenario enabled")
+        return s
+
+    @app.get("/api/scenario")
+    async def scenario_state() -> dict:
+        s = scenario_or_404()
+
+        async def one(svc: dict) -> dict:
+            try:
+                r = await http.get(svc["url"].rstrip("/") + "/_stats", timeout=1.5)
+                return {k: v for k, v in svc.items() if k != "url"} | {"online": r.status_code == 200, "stats": r.json() if r.status_code == 200 else None}
+            except (httpx.HTTPError, ValueError):
+                return {k: v for k, v in svc.items() if k != "url"} | {"online": False, "stats": None}
+
+        services = await asyncio.gather(*(one(svc) for svc in s.services()))
+        return s.public() | {"services": services}
+
+    @app.post("/api/scenario/services/{service_id}/chaos")
+    async def set_chaos(service_id: str, req: ChaosRequest) -> dict:
+        s = scenario_or_404()
+        svc = next((x for x in s.services() if x["id"] == service_id), None)
+        if not svc:
+            raise HTTPException(404, "Unknown service")
+        try:
+            r = await http.post(svc["url"].rstrip("/") + "/_chaos", json=req.model_dump(exclude_none=True))
+            return r.json()
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"{service_id} is unreachable: {type(e).__name__}")
+
+    @app.post("/api/scenario/load")
+    async def set_load(req: LoadRequest) -> dict:
+        s = scenario_or_404()
+        gen = next((x for x in s.services() if x["role"] == "loadgen"), None)
+        if not gen:
+            raise HTTPException(404, "Scenario has no load generator")
+        try:
+            r = await http.post(gen["url"].rstrip("/") + "/_load", json={"rps": max(0.0, min(req.rps, 50.0))})
+            return r.json()
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Load generator unreachable: {type(e).__name__}")
+
+    @app.post("/api/scenario/reset")
+    async def reset_scenario() -> dict:
+        s = scenario_or_404()
+        for svc in s.services():
+            if svc["role"] != "loadgen":
+                try:
+                    await http.post(svc["url"].rstrip("/") + "/_chaos", json={"latency_ms": 0, "error_rate": 0})
+                except httpx.HTTPError:
+                    pass
+        return {"ok": True}
+
+    @app.post("/api/lessons/{pack}/{slug}/setup")
+    async def setup_lesson(pack: str, slug: str) -> dict:
+        """Apply the scenario state a lesson needs (e.g. inject a fault to investigate)."""
+        lesson = lesson_or_404(f"{pack}/{slug}")
+        spec = lesson.meta.get("scenario") or {}
+        s = registry.scenario()
+        if not s or not spec:
+            return {"applied": []}
+        applied = []
+        if spec.get("reset", True):
+            await reset_scenario()
+        for service_id, chaos in (spec.get("chaos") or {}).items():
+            try:
+                await set_chaos(service_id, ChaosRequest(**chaos))
+                applied.append(service_id)
+            except HTTPException:
+                pass
+        if "load" in spec:
+            try:
+                await set_load(LoadRequest(rps=spec["load"]))
+            except HTTPException:
+                pass
+        return {"applied": applied}
+
+    # ------------------------------------------------------------ static UI
+    @app.get("/healthz")
+    async def healthz() -> dict:
+        return {"ok": True}
+
+    static = settings.static_dir
+    if (static / "index.html").exists():
+        app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
+
+        @app.get("/{path:path}")
+        async def spa(path: str):
+            if path.startswith(("api/", "tap/")):
+                raise HTTPException(404)
+            candidate = static / path
+            if path and candidate.is_file() and static in candidate.resolve().parents:
+                return FileResponse(candidate)
+            return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"})
+
+    return app

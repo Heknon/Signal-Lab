@@ -1,0 +1,59 @@
+# A single-node, security-disabled Elastic stack for local learning.
+# Never expose this configuration to a network you don't trust.
+services:
+  elasticsearch:
+    image: ${ELASTICSEARCH_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch:8.17.4}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.license.self_generated.type: basic
+      ES_JAVA_OPTS: ${ELASTICSEARCH_HEAP:--Xms1g -Xmx1g}
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    ports: ["9200:9200"]
+    volumes: [es-data:/usr/share/elasticsearch/data]
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s || exit 1"]
+      interval: 10s
+      retries: 30
+
+  kibana:
+    image: ${KIBANA_IMAGE:-docker.elastic.co/kibana/kibana:8.17.4}
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+      # Needed for alerting rules. A fixed key is fine for a local lab only.
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: signal-lab-local-only-encryption-key-0001
+      TELEMETRY_OPTIN: "false"
+      SERVER_PUBLICBASEURL: ${KIBANA_PUBLIC_URL:-http://localhost:5601}
+    ports: ["5601:5601"]
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:5601/api/status | grep -q available || exit 1"]
+      interval: 10s
+      retries: 40
+
+  apm-server:
+    image: ${APM_SERVER_IMAGE:-docker.elastic.co/apm/apm-server:8.17.4}
+    command:
+      - -e
+      - -E
+      - apm-server.host=0.0.0.0:8200
+      - -E
+      - output.elasticsearch.hosts=["http://elasticsearch:9200"]
+      - -E
+      - apm-server.kibana.enabled=true
+      - -E
+      - apm-server.kibana.host=http://kibana:5601
+    depends_on:
+      elasticsearch: {condition: service_healthy}
+
+  lab:
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      KIBANA_URL: http://kibana:5601
+      ELASTIC_APM_SERVER_URL: http://apm-server:8200
+
+volumes:
+  es-data:
