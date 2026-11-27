@@ -236,7 +236,7 @@ scripts/sync-chart.sh --check              # chart's Collector fragments match t
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of these, plus
-the UI build, Helm lint and `kubeconform`. On `main` and tags it publishes
+the UI build, Helm lint and `kubeconform`. On the default branch and tags it publishes
 the image to `ghcr.io/heknon/signal-lab`.
 
 ## Developing
