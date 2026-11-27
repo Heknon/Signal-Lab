@@ -21,8 +21,9 @@ telemetry your code actually produces.
 
 ## Quick start
 
-Requirements: Docker with Compose v2. Elastic needs about 4 GB of RAM for Docker; the lighter
-`victoriametrics` + `jaeger` combination runs comfortably in 2 GB.
+Requirements: Docker with Compose v2. The default backends (VictoriaMetrics +
+Grafana, VictoriaLogs, Jaeger) run comfortably in 2 GB. Elastic is opt-in and
+needs about 4 GB more.
 
 ```bash
 git clone https://github.com/heknon/signal-lab && cd signal-lab
@@ -37,8 +38,8 @@ Open **http://localhost:8000**. Grafana is on `:3000`, Kibana on `:5601`, Jaeger
 
 ```bash
 ./lab backends                        # list plugins (● = enabled)
-./lab use victoriametrics jaeger      # lightweight
-./lab use elastic victoriametrics     # the default
+./lab use victoriametrics victorialogs jaeger   # the default
+./lab use elastic victoriametrics               # add Elastic
 ./lab up
 ```
 
