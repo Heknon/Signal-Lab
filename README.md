@@ -1,177 +1,267 @@
 # Signal Lab
 
-**An interactive OpenTelemetry crash course.** Write Python with the real
-OpenTelemetry SDK in your browser, watch traces, metrics and logs flow through
-an OpenTelemetry Collector, and find them in real backends: Elastic,
-VictoriaMetrics + Grafana, and Jaeger. Every exercise is checked against the
-telemetry your code actually produces.
+An interactive course for learning OpenTelemetry and investigating systems
+with it. You write Python against the real OpenTelemetry SDK, send telemetry
+through a real Collector into real backends, and each exercise is graded on
+the telemetry that actually arrives.
 
-```text
- your code ─OTel SDK─▶ Collector ─┬─▶ Elastic (APM, Kibana, ES|QL)
-   (browser editor,               ├─▶ VictoriaMetrics + Grafana (MetricsQL)
-    isolated runner)              ├─▶ Jaeger
-                                  └─▶ Signal Lab's live inspector (waterfall, metrics, logs)
-```
+![The course map](docs/images/home.png)
 
-- **Real tools, nothing simulated.** Code runs as `opentelemetry-instrument python main.py`, exactly as in production.
-- **Instant feedback.** A live inspector shows each span, metric and log the moment the Collector forwards it, then confirms when each backend has indexed it, with a deep link.
-- **Graded by telemetry.** Checks inspect what you exported ("a `client` span whose parent is `checkout`", "at most 6 series"), and failures explain what was seen.
-- **Skippable by design.** Tracks → modules → lessons. Each lesson stands alone, lists what it assumes, and can be marked *I know this*.
-- **Pluggable.** Backends, lesson packs and scenarios are folders. Add one without touching the core.
+## Why it exists
+
+Most observability training stops at "here's a config file". Signal Lab makes
+you do the work and shows the result immediately:
+
+- **Real tools.** Your code runs as `opentelemetry-instrument python main.py`.
+  The Collector, VictoriaMetrics, VictoriaLogs, Jaeger, Grafana and Elastic are
+  the real products, not imitations.
+- **Instant feedback.** A built-in inspector shows every span, metric and log
+  the moment the Collector forwards it, then confirms when each backend has
+  indexed it, with a link straight to it.
+- **Graded on telemetry.** Checks read what you exported: "a `client` span whose
+  parent is `checkout`", "at most 6 time series", "every log carries a trace id".
+  A failing check says what it saw instead.
+- **Judgment, not just syntax.** The later tracks teach when to emit a metric,
+  a span, a log, or nothing at all; how to run a chaos experiment safely; and
+  how to find the cause of an incident from metrics alone.
+- **Skip what you know.** Tracks are split into modules and lessons that stand
+  alone. Mark any of them *I know this* and move on.
+- **Pluggable.** Backends, lesson packs and scenarios are folders. Add one
+  without touching the core.
 
 ## Quick start
 
-Requirements: Docker with Compose v2. The default backends (VictoriaMetrics +
-Grafana, VictoriaLogs, Jaeger) run comfortably in 2 GB. Elastic is opt-in and
-needs about 4 GB more.
+You need Docker with Compose v2 and about 2 GB of memory for Docker.
 
 ```bash
 git clone https://github.com/heknon/signal-lab && cd signal-lab
-./lab up            # builds and starts everything
-```
-
-Open **http://localhost:8000**. Grafana is on `:3000`, Kibana on `:5601`, Jaeger on `:16686`.
-
-> On Linux, Elasticsearch needs `sudo sysctl -w vm.max_map_count=262144`.
-
-### Choose your backends
-
-```bash
-./lab backends                        # list plugins (● = enabled)
-./lab use victoriametrics victorialogs jaeger   # the default
-./lab use elastic victoriametrics               # add Elastic
 ./lab up
 ```
 
-`./lab use` rewrites three lines in `.env` (`SIGNAL_LAB_BACKENDS`, `COMPOSE_FILE`,
-`COLLECTOR_CONFIGS`), so plain `docker compose up` works too.
+Then open **http://localhost:8000**. Grafana runs on `:3000` and Jaeger on `:16686`.
 
-| Command | |
+The default stack is VictoriaMetrics + Grafana, VictoriaLogs and Jaeger.
+Elastic (Elasticsearch, Kibana and APM Server) is opt-in and needs about 4 GB
+more:
+
+```bash
+./lab backends                                   # list backend plugins (● = enabled)
+./lab use victoriametrics victorialogs jaeger    # the default
+./lab use elastic victoriametrics                # add Elastic
+./lab up
+```
+
+On Linux, Elasticsearch also needs `sudo sysctl -w vm.max_map_count=262144`.
+
+| Command | What it does |
 |---|---|
-| `./lab up` / `down` / `reset` | start, stop, stop and delete data |
-| `./lab status` / `logs [svc]` | health and logs |
-| `./lab dev` | run the API and shop on your machine, without Docker |
+| `./lab up` | build and start everything |
+| `./lab down` / `./lab reset` | stop / stop and delete all data |
+| `./lab status`, `./lab logs [service]` | health and logs |
+| `./lab dev` | run the API and the shop on your machine, without Docker |
 
 ## The course
 
-| Track | Needs | What you learn |
+| Track | Needs | Covers |
 |---|---|---|
 | **OpenTelemetry Foundations** | any backend | spans, nesting, attributes and events, errors, semantic conventions, links, auto-instrumentation, HTTP and queue propagation, baggage, counters, histograms, gauges, cardinality, exemplars, structured logs, log correlation, manual SDK setup, sampling, views |
-| **The OpenTelemetry Collector** | any backend | edit a real Collector config: filtering, redaction, OTTL transforms, tail sampling, span metrics |
-| **Metrics with VictoriaMetrics & Grafana** | `victoriametrics` | MetricsQL from selectors to `histogram_quantile`, error ratios, building dashboards, finding a slow service |
+| **The OpenTelemetry Collector** | any backend | edit a real Collector config: filtering, redaction, OTTL transforms, tail sampling, metrics derived from spans |
+| **Metrics with VictoriaMetrics & Grafana** | `victoriametrics` | MetricsQL from selectors to `histogram_quantile`, error ratios, dashboards, finding a slow service |
 | **Logs with VictoriaLogs & Grafana** | `victorialogs` | LogsQL filters, stats, log volume, logs for a trace, error ratios |
 | **Investigating with Elastic** | `elastic` | Kibana APM, the service map, errors, ES\|QL, dashboards and alerts |
-| **Observability in practice** | `victoriametrics` | choosing the right signal (and when to emit nothing), telemetry budgets, RED/USE/golden signals, SLIs, SLOs, error budgets, burn-rate alerts, chaos experiments, and seven incidents investigated from metrics alone |
+| **Observability in practice** | `victoriametrics` | choosing the right signal, telemetry budgets, RED, USE and the golden signals, SLIs, SLOs, error budgets, burn-rate alerts, chaos experiments, incidents |
 
-Lessons come in several kinds:
+### Write code, see the telemetry
 
-- **code**: Python, graded on the telemetry it exports.
-- **collector**: a Collector config, graded on what comes out of it.
-- **query**: MetricsQL, LogsQL or ES|QL against live data, graded against a reference query.
-- **quiz**.
-- **hands-on tasks** in Grafana or Kibana, verified through their APIs.
-- **chaos experiments**: a hypothesis, a live steady-state chart and an abort condition.
-- **incidents**: a symptom, a hidden fault timeline, and answers graded against what really happened.
+Code lessons give you an editor, a Run button and an inspector with a trace
+waterfall, metric cards (including histogram buckets and cardinality warnings)
+and logs that link back to the span that wrote them.
 
-The **Signal Shop** scenario (storefront → checkout → inventory/payments, plus
-a load generator) provides realistic background traffic. The *Scenario*
-drawer lets you inject latency and errors into any service.
+![A code lesson with its trace waterfall](docs/images/lesson-trace.png)
 
-## Teams
+### Configure a real Collector
 
-By default the lab runs in **open** mode: no login, one shared progress
-record, right for your own machine. For a team, set accounts mode (the Helm
-chart does this by default):
+Collector lessons give you a YAML editor. On each run the runner validates
+your config, starts a Collector with it, sends the lesson's fixed traffic
+through it, and grades what comes out.
+
+![A tail sampling lesson](docs/images/lesson-collector.png)
+
+### Query live data
+
+Query lessons run MetricsQL, LogsQL or ES|QL against the backends while the
+Signal Shop generates traffic. Your answer is compared with a reference query
+evaluated at the same instant.
+
+![A MetricsQL lesson](docs/images/lesson-query.png)
+
+### Run chaos experiments
+
+Each experiment states a hypothesis and a steady-state metric. The lab
+records a baseline, injects the fault, charts the steady state live, and
+removes the fault on its own if the abort line is crossed.
+
+![A chaos experiment that held](docs/images/experiment.png)
+
+### Investigate incidents from metrics alone
+
+The capstone: seven incidents, each with only a symptom ("payments traffic
+tripled, storefront is flat") and a hidden fault timeline running on the live
+shop. You find when it started, the root cause and the mechanism, and prove it
+with a query. Answers are graded against what actually happened.
+
+| Incident | What it teaches |
+|---|---|
+| The p99 nobody saw | averages hide tails |
+| Who's flooding payments? | retries amplify load; the symptom isn't the cause |
+| Slow, but nothing's failing | saturation shows up as latency, not errors |
+| It's only some customers | split by version and by customer attributes |
+| All green, revenue down | watch business metrics, not only RED |
+| Blips every few minutes | memory leaks, restarts and counter resets |
+| The metrics bill doubled | cardinality |
+
+![An incident lesson](docs/images/incident.png)
+
+## The Signal Shop
+
+Lessons run against a small shop: `storefront` → `checkout` → `inventory` and
+`payments`, with a load generator in front. It's auto-instrumented and emits
+business metrics and structured logs. The **Scenario** drawer injects latency
+and errors into any service. Experiments and incidents can also cause:
+
+- slow reservations for one product
+- retries with no backoff
+- database connection pool exhaustion
+- a deploy as a new `service.version`
+- failures for one customer tier only
+- silently dropped carts
+- a memory leak that ends in restarts
+- a cardinality bomb
+
+## Teams and game days
+
+The lab runs in **open** mode by default: no login, which suits your own
+machine. For a team, turn on accounts:
 
 ```bash
-SIGNAL_LAB_AUTH=accounts ./lab up      # first account to sign up becomes admin
+SIGNAL_LAB_AUTH=accounts ./lab up     # the first person to sign up becomes an admin
 ```
 
-Everyone signs in and gets their own progress, drafts and run history,
-stored in Postgres. Admins see the **People** page, with everyone's progress
-and a live **game day** board: start an incident, and the whole team
-investigates the same shop while the board shows who found what, and when.
-`SIGNAL_LAB_SCENARIO_CONTROL=admins` keeps faults and incidents in admins'
-hands; faults injected by lessons clear themselves after
-`SIGNAL_LAB_FAULT_TTL` seconds.
+Everyone then has their own progress, editor drafts and run history, stored
+in Postgres.
+
+Admins get a **People** page with everyone's progress and a live **game day**
+board. Start an incident, the whole team investigates the same shop, and the
+board shows who found what, and how long it took.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `SIGNAL_LAB_AUTH` | `open` | `open` (no login) or `accounts` |
+| `SIGNAL_LAB_SIGNUP` | `open` | `closed` means admins create accounts |
+| `SIGNAL_LAB_ADMIN_USERNAME` / `_PASSWORD` | | create or promote an admin at start-up |
+| `SIGNAL_LAB_SCENARIO_CONTROL` | `everyone` | `admins` keeps faults, experiments and incidents in admins' hands |
+| `SIGNAL_LAB_FAULT_TTL` | `900` | seconds before a fault injected by a lesson clears itself |
+| `SIGNAL_LAB_RUNS_ENABLED` | `true` | `false` for a read-only course |
 
 ## Deploy on Kubernetes
 
 ```bash
 helm install signal-lab charts/signal-lab
-kubectl port-forward svc/signal-lab 8000:8000
+kubectl port-forward svc/signal-lab-lab 8000:8000
 ```
 
-VictoriaMetrics + Grafana, VictoriaLogs, Jaeger and Postgres are bundled and enabled by default, with accounts on;
-Elastic is opt-in (`--set backends.elastic.enabled=true`), and every backend
-can point at an existing installation instead (`mode: external`). See
-[`charts/signal-lab/README.md`](charts/signal-lab/README.md).
+The chart bundles VictoriaMetrics + Grafana, VictoriaLogs, Jaeger and Postgres,
+with accounts turned on. Elastic is opt-in (`--set backends.elastic.enabled=true`).
+Any backend, and Postgres, can point at an existing installation instead
+(`mode: external`). See [`charts/signal-lab/README.md`](charts/signal-lab/README.md)
+for every value.
 
-## Architecture
+## How it works
+
+```text
+ browser ──▶ lab (UI, lessons, checks, accounts, experiments)
+                │ runs code
+                ▼
+             runner ──OTLP──▶ Collector ──┬──▶ VictoriaMetrics + Grafana
+           (isolated)                     ├──▶ VictoriaLogs
+                                          ├──▶ Jaeger / Elastic
+                                          └──▶ lab tap ──▶ live inspector and checks
+```
 
 | Component | Role |
 |---|---|
-| `lab` | FastAPI app serving the UI, lessons, the check engine, accounts, the experiment/incident engine, and an OTLP/HTTP **tap** that feeds the live inspector |
-| `postgres` | Accounts, progress, editor drafts and run history (the lab falls back to memory without it) |
-| `runner` | Executes learner code with the OTel SDK, and a slim Collector (built from `deploy/collector/builder.yaml`) for Collector lessons. Separate container: read-only filesystem, no capabilities, resource limits, and (on Kubernetes) a NetworkPolicy |
-| `collector` | OpenTelemetry Collector Contrib. `deploy/collector/base.yaml` plus one fragment per enabled backend |
-| `storefront`, `checkout`, `inventory`, `payments`, `loadgen` | The Signal Shop scenario, auto-instrumented |
-| backends | Defined by plugins in `plugins/backends/` |
+| `lab` | FastAPI app: the UI, lessons, check engine, accounts, the experiment and incident engine, and an OTLP/HTTP **tap** that feeds the inspector |
+| `runner` | Runs learner code, and a slim Collector built from [`deploy/collector/builder.yaml`](deploy/collector/builder.yaml) for Collector lessons. Read-only filesystem, no capabilities, resource limits, and a NetworkPolicy on Kubernetes |
+| `collector` | OpenTelemetry Collector Contrib: [`deploy/collector/base.yaml`](deploy/collector/base.yaml) plus one fragment per enabled backend |
+| `postgres` | accounts, progress, drafts and run history; without it the lab keeps them in memory |
+| shop services | the Signal Shop scenario |
+| backends | whatever plugins in [`plugins/backends/`](plugins/backends) are enabled |
 
-Telemetry is attributed to a run through the `signal_lab.run_id` resource
-attribute. Spans from shop services join a learner's run by trace id, so a
-trace that crosses into the shop shows up whole.
+Each run is tagged with a `signal_lab.run_id` resource attribute. Spans from
+shop services join a run by trace id, so a trace that crosses into the shop
+shows up whole.
 
 ```text
 plugins/
-  backends/<id>/    plugin.yaml · adapter.py · compose.yaml · collector.yaml
-  lessons/<id>/     pack.yaml · <lesson>/lesson.md · starter.* · solution.*
-  scenarios/<id>/   plugin.yaml · service code
-server/signal_lab/  API, runner, OTLP decoding, check engine, plugin loader
-web/                React + Vite UI (Bun)
-charts/signal-lab/  Helm chart
-deploy/collector/   Collector base config
+  backends/<id>/     plugin.yaml · adapter.py · compose.yaml · collector.yaml
+  lessons/<pack>/    pack.yaml · <lesson>/lesson.md · starter.* · solution.* · traffic.py
+  scenarios/<id>/    plugin.yaml · service code
+server/signal_lab/   API, runner, OTLP decoding, checks, accounts, experiments, plugin loader
+web/                 React + Vite UI, built with Bun
+charts/signal-lab/   Helm chart
+deploy/collector/    Collector base config and the lesson Collector's build manifest
+docs/plugins.md      how to write lessons, backends and scenarios
 ```
 
 ## Extending it
 
-See **[docs/plugins.md](docs/plugins.md)** for lesson packs, check types,
-backend plugins and scenarios. In short:
+[docs/plugins.md](docs/plugins.md) is the full reference: lesson front matter,
+every check type, experiments and incidents, backend adapters and scenarios.
 
-- **A lesson** is a folder with `lesson.md` (front matter + Markdown), `starter.py` and `solution.py`.
-  With Compose, lesson files are mounted and hot-reloaded, so edit and refresh.
+- **A lesson** is a folder with `lesson.md` (front matter and Markdown), a
+  starter and a solution. With Compose, lesson files are mounted and reloaded
+  on change, so you can edit and refresh.
 - **A backend** is a folder with `plugin.yaml`, a Collector fragment, a Compose
-  file and an optional `adapter.py` (health, "did my trace arrive?", queries, deep links).
+  file and an optional Python adapter (health, "did my trace arrive?",
+  queries, deep links, task verification).
+- **A scenario** is any set of services exposing `/_stats` and `/_chaos`.
 
-Test every lesson against a running lab:
+## Testing
 
 ```bash
-python3 scripts/test_lessons.py            # or: python3 scripts/test_lessons.py otel-core/counters
+python3 -m pytest server/tests             # API, accounts, checks, experiment engine (TEST_DATABASE_URL for Postgres)
+python3 scripts/test_lessons.py            # every lesson: solutions pass, starters fail
 python3 scripts/test_incidents.py          # each incident's fault produces its evidence
-.venv/bin/python -m pytest server/tests    # API, accounts (set TEST_DATABASE_URL for Postgres) and checks
+scripts/sync-chart.sh --check              # chart's Collector fragments match the plugins
 ```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of these, plus
+the UI build, Helm lint and `kubeconform`. On `main` and tags it publishes
+the image to `ghcr.io/heknon/signal-lab`.
 
 ## Developing
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r server/requirements.txt
 cd web && bun install && bun run build && cd ..
-./lab dev                         # API on :8000 (serves web/dist) + shop services
-cd web && bun run dev             # optional: Vite on :5173 with hot reload, proxied to :8000
+./lab dev                     # API on :8000 serving web/dist, plus the shop services
+cd web && bun run dev         # optional: Vite on :5173 with hot reload
 ```
 
-Building the image behind a TLS-intercepting proxy:
+To run the Compose stack from your working tree, add `compose.dev.yaml` to
+`COMPOSE_FILE`. If you build behind a TLS-intercepting proxy, pass its CA:
 `docker build --secret id=ca_bundle,src=/path/to/ca.pem -t signal-lab:local .`
 
 ## Security
 
-Signal Lab runs arbitrary Python submitted through the browser. The runner is
-isolated (separate container, non-root, read-only root filesystem, dropped
-capabilities, CPU/memory/PID limits, run timeout), but treat a deployment
-like a shared CI runner: keep it on a trusted network or behind
-authentication. Set `SIGNAL_LAB_RUNS_ENABLED=false` for a read-only demo. The
-bundled Elastic and Grafana have security disabled for local learning; use
-`mode: external` with real credentials for anything shared.
+Signal Lab runs Python submitted through a browser. The runner is isolated:
+separate container, non-root, read-only root filesystem, no capabilities,
+CPU, memory and process limits, a timeout, and a NetworkPolicy on Kubernetes.
+Even so, treat a deployment like a shared CI runner: keep it on a trusted
+network and use accounts mode.
+
+The bundled Elastic and Grafana have authentication turned off for local
+learning. Use `mode: external` with real credentials for anything shared.
 
 ## License
 

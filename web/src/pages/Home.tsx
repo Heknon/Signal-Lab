@@ -98,7 +98,7 @@ export default function Home() {
               <h1>OpenTelemetry, hands on</h1>
               <p>
                 {total} lessons, {codeLessons} of them in Python against the real SDK. Your telemetry goes through a Collector to{" "}
-                {enabled.length ? enabled.map((b) => b.title).join(" and ") : "the lab"}, and each exercise is graded on what arrives.
+                {enabled.length ? new Intl.ListFormat("en", { type: "conjunction" }).format(enabled.map((b) => b.title)) : "the lab"}, and each exercise is graded on what arrives.
               </p>
             </div>
             {next && (
