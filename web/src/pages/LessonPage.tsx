@@ -37,7 +37,7 @@ function Sidebar({ current }: { current: FlatLesson }) {
           <div key={m.id} className="outline-module">
             <div className="outline-module-head">{m.title}<span className="count">{done}/{m.lessons.length}</span></div>
             {m.lessons.map((l) => (
-              <Link key={l.id} to={`/learn/${l.id}`} className={`outline-lesson ${l.id === current.id ? "active" : ""}`} aria-current={l.id === current.id ? "page" : undefined}>
+              <Link key={l.id} to={`/learn/${l.id}`} onMouseEnter={() => api.prefetchLesson(l.id)} onFocus={() => api.prefetchLesson(l.id)} className={`outline-lesson ${l.id === current.id ? "active" : ""}`} aria-current={l.id === current.id ? "page" : undefined}>
                 <StateIcon state={lessonState(p, l.id)} current={l.id === current.id} />
                 <span className="t">{l.title}</span>
               </Link>
@@ -155,12 +155,22 @@ export default function LessonPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, lesson.data, onComplete]);
 
+  // Warm the neighbours so Next / Previous are instant.
+  useEffect(() => {
+    if (!lesson.data) return;
+    const t = window.setTimeout(() => { if (neighbours.next) api.prefetchLesson(neighbours.next.id); if (neighbours.prev) api.prefetchLesson(neighbours.prev.id); }, 150);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson.data]);
+
   const neighbours = useMemo(() => {
     if (!flat) return { prev: undefined, next: undefined };
     return { prev: lessons[flat.index - 1], next: lessons[flat.index + 1] };
   }, [flat, lessons]);
 
-  const l = lesson.data;
+  // Only ever render the lesson in the URL: the loaded one if it matches, else one
+  // already in the cache (instant), else nothing until it arrives.
+  const l = lesson.data?.id === id ? lesson.data : api.loadedLesson(id);
   const state = lessonState(p, id);
   const complete = state === "done";
   const crumbs = flat ? [
@@ -204,7 +214,7 @@ export default function LessonPage() {
           {l.kind === "code" && l.tools.length > 0 && <div style={{ margin: "8px 0 20px" }}><ToolLinks tools={l.tools} /></div>}
           <Hints key={l.id} hints={l.hints} />
           <nav className="pager" aria-label="Lesson navigation">
-            {neighbours.prev ? <Link className="prev" to={`/learn/${neighbours.prev.id}`}><ArrowLeft />{neighbours.prev.title}</Link> : <span />}
+            {neighbours.prev ? <Link className="prev" to={`/learn/${neighbours.prev.id}`} onMouseEnter={() => api.prefetchLesson(neighbours.prev!.id)}><ArrowLeft />{neighbours.prev.title}</Link> : <span />}
             {neighbours.next && <Link className={`next ${complete ? "highlight" : ""}`} to={`/learn/${neighbours.next.id}`}>{neighbours.next.title}<ArrowRight /></Link>}
           </nav>
         </article>
