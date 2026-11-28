@@ -55,6 +55,9 @@ interface Props {
   onChange?: (v: string) => void;
   language: EditorLanguage;
   onRun?: () => void;
+  /** Ctrl/Cmd+S out of habit: edits autosave anyway, so this just syncs now and
+   *  keeps the browser's "save page" dialog away. */
+  onSave?: () => void;
   readOnly?: boolean;
   compact?: boolean;
   placeholder?: string;
@@ -81,16 +84,17 @@ function languageExtension(lang: EditorLanguage, promqlUrl?: string): Extension 
   }
 }
 
-export default function Editor({ value, onChange, language, onRun, readOnly, compact, placeholder, promqlUrl, autoFocus, intellisense }: Props) {
+export default function Editor({ value, onChange, language, onRun, onSave, readOnly, compact, placeholder, promqlUrl, autoFocus, intellisense }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const handlers = useRef({ onChange, onRun });
-  handlers.current = { onChange, onRun };
+  const handlers = useRef({ onChange, onRun, onSave });
+  handlers.current = { onChange, onRun, onSave };
 
   useEffect(() => {
     if (!host.current) return;
     const runKey = keymap.of([
       { key: "Mod-Enter", preventDefault: true, run: () => { handlers.current.onRun?.(); return true; } },
+      { key: "Mod-s", preventDefault: true, run: () => { handlers.current.onSave?.(); return true; } },
       { key: "Shift-Enter", preventDefault: true, run: () => { if (!compact) return false; handlers.current.onRun?.(); return true; } },
     ]);
     const intel = !!intellisense && language === "python";

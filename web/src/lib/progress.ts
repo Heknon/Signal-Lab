@@ -86,27 +86,68 @@ export function useProgress(): Progress {
 export type LessonState = "done" | "known" | "todo";
 export const lessonState = (p: Progress, id: string): LessonState => (p.completed[id] ? "done" : p.known[id] ? "known" : "todo");
 
-// Editor drafts: saved to the server (debounced), mirrored locally.
+// Editor drafts: saved locally on every keystroke and to the server (debounced),
+// so they follow you to another browser. A local edit the server hasn't confirmed
+// yet is marked pending: on load it wins over the (older) server copy and is
+// re-sent. Pending saves are also flushed when the page is hidden or closed.
 const timers = new Map<string, number>();
+const key = (id: string) => `sl-draft:${id}`;
+const pendingKey = (id: string) => `sl-draft-pending:${id}`;
+const local = {
+  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* storage full or blocked */ } },
+  del: (k: string) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+};
+
+async function pushDraft(id: string, keepalive = false): Promise<void> {
+  window.clearTimeout(timers.get(id));
+  timers.delete(id);
+  const code = local.get(key(id));
+  if (code == null || local.get(pendingKey(id)) == null) return;
+  try {
+    const r = await fetch(`/api/drafts/${id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }), keepalive });
+    // Only clear the mark if nothing changed while the request was in flight.
+    if (r.ok && local.get(key(id)) === code) local.del(pendingKey(id));
+  } catch { /* offline: stays pending, sent next time */ }
+}
+
+if (typeof window !== "undefined") {
+  const flushAll = () => { for (const id of [...timers.keys()]) void pushDraft(id, true); };
+  window.addEventListener("pagehide", flushAll);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushAll(); });
+}
+
 export const drafts = {
   get(id: string): string | null {
-    try { return localStorage.getItem(`sl-draft:${id}`); } catch { return null; }
+    return local.get(key(id));
   },
+  /** The draft to show: an unsynced local edit, else the server's copy, else the local one. */
   async fetch(id: string): Promise<string | null> {
+    if (local.get(pendingKey(id)) != null) {
+      void pushDraft(id);
+      return local.get(key(id));
+    }
     const r = await send("GET", `/api/drafts/${id}`);
     if (!r?.ok) return null;
     const { code } = await r.json();
-    if (code != null) try { localStorage.setItem(`sl-draft:${id}`, code); } catch { /* ignore */ }
+    if (code != null) local.set(key(id), code);
     return code;
   },
   set(id: string, code: string) {
-    try { localStorage.setItem(`sl-draft:${id}`, code); } catch { /* ignore */ }
+    local.set(key(id), code);
+    local.set(pendingKey(id), "1");
     window.clearTimeout(timers.get(id));
-    timers.set(id, window.setTimeout(() => void send("PUT", `/api/drafts/${id}`, { code }), 800));
+    timers.set(id, window.setTimeout(() => void pushDraft(id), 800));
+  },
+  /** Save now (Ctrl/Cmd+S). */
+  flush(id: string): Promise<void> {
+    return pushDraft(id);
   },
   clear(id: string) {
-    try { localStorage.removeItem(`sl-draft:${id}`); } catch { /* ignore */ }
+    local.del(key(id));
+    local.del(pendingKey(id));
     window.clearTimeout(timers.get(id));
+    timers.delete(id);
     void send("DELETE", `/api/drafts/${id}`);
   },
 };
