@@ -42,8 +42,8 @@ between processes. You set it when the span starts, and it can't be changed late
 |---|---|---|
 | `server` | handling a request that came in | the shop's checkout handling `POST /checkout` |
 | `client` | making a request to something else, and waiting for the answer | checkout calling payments; inventory's database query |
-| `producer` | sending a message without waiting for it to be handled | `orders publish` in the messaging lesson |
-| `consumer` | handling a message someone sent earlier | `orders process` in the same lesson |
+| `producer` | sending a message without waiting for it to be handled | `send orders` in the messaging lesson |
+| `consumer` | handling a message someone sent earlier | `process orders` in the same lesson |
 | `internal` | work inside one process, no one else involved | computing a cart total |
 
 `internal` is the default: if you don't pass a kind, that's what you get. That

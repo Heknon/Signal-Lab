@@ -9,7 +9,10 @@ queue: list[str] = []  # stands in for Kafka / RabbitMQ / SQS
 
 
 def publish(orders: list[str]) -> None:
-    with tracer.start_as_current_span("orders publish", kind=SpanKind.PRODUCER):
+    with tracer.start_as_current_span("send orders", kind=SpanKind.PRODUCER) as span:
+        span.set_attribute("messaging.system", "kafka")
+        span.set_attribute("messaging.destination.name", "orders")
+        span.set_attribute("messaging.operation.type", "send")
         for order_id in orders:
             message = {"headers": {}, "body": {"order_id": order_id}}
             # TODO: inject the trace context into message["headers"]
@@ -20,7 +23,10 @@ def consume() -> None:
     while queue:
         message = json.loads(queue.pop(0))
         # TODO: extract the context and continue the producer's trace
-        with tracer.start_as_current_span("orders process", kind=SpanKind.CONSUMER) as span:
+        with tracer.start_as_current_span("process orders", kind=SpanKind.CONSUMER) as span:
+            span.set_attribute("messaging.system", "kafka")
+            span.set_attribute("messaging.destination.name", "orders")
+            span.set_attribute("messaging.operation.type", "process")
             span.set_attribute("app.order.id", message["body"]["order_id"])
             time.sleep(0.02)
 

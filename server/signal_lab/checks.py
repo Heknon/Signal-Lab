@@ -12,6 +12,7 @@ import difflib
 import re
 from collections import defaultdict
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 PASS, FAIL, PENDING = "pass", "fail", "pending"
 
@@ -123,11 +124,13 @@ def check_span(check: dict, t: dict, ctx: dict) -> dict:
     spans = t["spans"]
     where = check.get("where", {})
     by_id = {s["span_id"]: s for s in spans}
-    matched, near = [], []
+    matched, near, other_service = [], [], []
     for s in spans:
         ok, why = _span_matches(s, where, by_id)
         if ok:
             matched.append(s)
+        elif why == "service" and _span_matches(s, {k: v for k, v in where.items() if k != "service"}, by_id)[0]:
+            other_service.append(s)
         elif why != "name" and why != "service":
             near.append((s, why))
     ok, need = _count_ok(len(matched), check.get("count"))
@@ -135,6 +138,10 @@ def check_span(check: dict, t: dict, ctx: dict) -> dict:
         return result(check, PASS, f"Found {len(matched)} matching span{'s' if len(matched) != 1 else ''}.")
     if not spans:
         return result(check, PENDING if ctx.get("collecting") else FAIL, "No spans have arrived yet." if ctx.get("collecting") else "No spans were exported.")
+    if other_service and not matched:
+        s = other_service[0]
+        return result(check, FAIL, f"Span `{s['name']}` matches, but it belongs to service `{s['service']}`, expected `{where['service']}`. "
+                      "A span's service comes from the provider that created it.")
     if near and not matched:
         s, why = near[0]
         return result(check, FAIL, f"Span `{s['name']}` is close, but {why}")
@@ -173,7 +180,10 @@ def check_trace(check: dict, t: dict, ctx: dict) -> dict:
                     problems.append(f"{value} {key} (expected {need})")
         for svc in check.get("includes_services", []):
             if svc not in services:
-                problems.append(f"no spans from `{svc}` (if it was called, it started its own trace: context wasn't propagated)")
+                elsewhere = any(s["service"] == svc for s in t["spans"])
+                problems.append(f"no spans from `{svc}` ("
+                                + ("they're in a separate trace: context wasn't propagated)" if elsewhere
+                                   else "this run produced no spans from that service at all)"))
         if not problems:
             return result(check, PASS, f"Trace spans {len(services)} service(s): {_fmt_list(sorted(services))}.")
         score = len(services) * 10 + len(spans)
@@ -184,6 +194,114 @@ def check_trace(check: dict, t: dict, ctx: dict) -> dict:
     if n > 1 and check.get("services"):
         prefix += "Context may not be propagating: spans that should share one trace ended up in separate traces. "
     return result(check, PENDING if ctx.get("collecting") else FAIL, f"{prefix}Best trace has {best[1]}.")
+
+
+# ---------------------------------------------------------------- service map
+# Mirrors web/src/components/inspector/MapView.tsx (deriveMap): keep them in step.
+
+_PRODUCER_NAME = re.compile(r"^(?:(?:publish|send|create) (.+)|(.+) (?:publish|send|create))$")
+
+
+def _target_name(s: dict) -> str:
+    """What an uninstrumented callee is called, from the caller's client/producer span."""
+    a = s["attributes"]
+
+    def text(k: str) -> str | None:
+        v = a.get(k)
+        return v if isinstance(v, str) and v else None
+
+    if text("peer.service"):
+        return text("peer.service")
+    if text("messaging.destination.name"):
+        return text("messaging.destination.name")
+    if text("db.system"):
+        return " ".join(x for x in (text("db.system"), text("db.namespace") or text("db.name")) if x)
+    if text("server.address"):
+        return text("server.address")
+    if s["kind"] == "producer":
+        m = _PRODUCER_NAME.match(s["name"])
+        if m:
+            return m.group(1) or m.group(2)
+    url = text("url.full") or text("http.url")
+    if url:
+        host = urlparse(url).netloc
+        if host:
+            return host
+    return f"{s['name']} (unknown peer)"
+
+
+def service_map(spans: list[dict]) -> dict:
+    """Arrows the way backends draw them: one per client/producer span, to the service whose
+    server/consumer span handled it, else to an external dependency named by its attributes."""
+    children: dict[str, list[dict]] = defaultdict(list)
+    linked: dict[str, list[dict]] = defaultdict(list)
+    for s in spans:
+        if s["parent_span_id"]:
+            children[s["parent_span_id"]].append(s)
+        for link in s.get("links") or []:
+            linked[link["span_id"]].append(s)
+    services = sorted({s["service"] for s in spans})
+    edges: dict[tuple[str, str], dict] = {}
+    for s in spans:
+        if s["kind"] not in ("client", "producer"):
+            continue
+        handlers = [c for c in children[s["span_id"]] + linked[s["span_id"]]
+                    if c["kind"] in ("server", "consumer") and c["service"] != s["service"]]
+        targets = sorted({h["service"] for h in handlers}) or [_target_name(s)]
+        for to in targets:
+            e = edges.setdefault((s["service"], to), {"from": s["service"], "to": to, "external": not handlers, "calls": 0, "errors": 0})
+            e["calls"] += 1
+            e["errors"] += s["status"]["code"] == "error"
+    return {"services": services, "edges": list(edges.values())}
+
+
+def _describe_edges(edges: list[dict]) -> str:
+    """Short, readable list of the map's arrows for failure messages."""
+    if not edges:
+        return "The map has no arrows: no `client` or `producer` spans."
+    sources = {e["from"] for e in edges}
+    label = lambda e: f"{e['to']}{' ×' + str(e['calls']) if e['calls'] > 1 else ''}"
+    if len(sources) == 1:
+        return f"Arrows from {next(iter(sources))} go to: " + ", ".join(label(e) for e in edges) + "."
+    return "Arrows: " + ", ".join(f"{e['from']} → {label(e)}" for e in edges) + "."
+
+
+def check_map(check: dict, t: dict, ctx: dict) -> dict:
+    """Grade the service map.
+
+    edge: {from, to, external?: bool, calls?: count-spec}   an arrow that must exist
+    nodes_absent: [name, ...]                              boxes that must not appear
+    """
+    spans = t["spans"]
+    if not spans:
+        return result(check, PENDING if ctx.get("collecting") else FAIL, "No spans yet." if ctx.get("collecting") else "No spans were exported.")
+    m = service_map(spans)
+    edges = m["edges"]
+    have = _describe_edges(edges)
+    want = check.get("edge")
+    if want:
+        e = next((x for x in edges if x["from"] == want["from"] and x["to"] == want["to"]), None)
+        if e is None:  # the list of arrows says more than a fuzzy "did you mean"
+            return result(check, FAIL, f"No arrow {want['from']} → {want['to']}. {have}")
+        if "external" in want and e["external"] != want["external"]:
+            if want["external"]:
+                return result(check, FAIL, f"{e['from']} → {e['to']} is drawn as an instrumented service, expected an external dependency.")
+            handled_in_caller = [c for c in spans if c["kind"] in ("server", "consumer") and c["service"] == e["from"]
+                                 and any(p["span_id"] == c["parent_span_id"] and p["kind"] in ("client", "producer") for p in spans)]
+            if handled_in_caller:
+                return result(check, FAIL, f"{e['from']} → {e['to']} is dashed. `{handled_in_caller[0]['name']}` handles the call, but it belongs to "
+                              f"`{e['from']}`, the caller's own service. Create it with a tracer from a provider whose service.name is `{e['to']}`.")
+            return result(check, FAIL, f"{e['from']} → {e['to']} is dashed: no span from a `{e['to']}` service handled the call. "
+                          "Its server span must come from a provider whose service.name is "
+                          f"`{e['to']}`, and continue the caller's trace.")
+        if "calls" in want:
+            ok, need = _count_ok(e["calls"], want["calls"])
+            if not ok:
+                return result(check, FAIL, f"{e['from']} → {e['to']} was called {e['calls']}×, expected {need}. {have}")
+    for name in check.get("nodes_absent") or []:
+        if any(x["to"] == name for x in edges) or name in m["services"]:
+            return result(check, FAIL, f"`{name}` is still a box on the map. {have}")
+    return result(check, PASS, have)
 
 
 # ---------------------------------------------------------------- metrics
@@ -312,6 +430,7 @@ CHECKS: dict[str, Callable[[dict, dict, dict], dict]] = {
     "budget": check_budget,
     "span": check_span,
     "trace": check_trace,
+    "map": check_map,
     "metric": check_metric,
     "log": check_log,
     "output": check_output,

@@ -36,7 +36,7 @@ This repository's platform implements all of the above. To reuse it for a new su
 
 Lesson kinds already supported: `code`, `collector` (config + traffic),
 `query`, `quiz`, `task`, `experiment` and `incident`. Check types: `span`,
-`trace`, `metric`, `log`, `budget`, `output`, `exit`, `query`, `backend`, plus
+`trace`, `map` (service-map arrows), `metric`, `log`, `budget`, `output`, `exit`, `query`, `backend`, plus
 the question kinds `time`, `outcome` and `query`.
 
 ## Building from scratch

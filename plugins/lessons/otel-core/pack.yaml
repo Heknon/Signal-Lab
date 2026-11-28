@@ -17,6 +17,11 @@ modules:
     description: Spans, their shape, and how they describe a request.
     assumes: [Basic Python]
     lessons: [first-span, nested-spans, attributes-events, errors-status, semantic-conventions, span-links, auto-instrumentation]
+  - id: dependencies
+    title: Dependencies and the map
+    description: Name what you call, publish to a topic, and instrument both sides of a call, one arrow at a time on the Map.
+    assumes: [Semantic conventions]
+    lessons: [naming-dependencies, publishing-to-a-queue, both-sides-of-a-call]
   - id: context
     title: Context propagation
     description: How one trace crosses process boundaries over HTTP and queues, and what baggage is for.

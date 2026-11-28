@@ -13,14 +13,21 @@ function targetName(s: Span): string {
   if (str("messaging.destination.name")) return str("messaging.destination.name")!;
   if (str("db.system")) return [str("db.system"), str("db.namespace") ?? str("db.name")].filter(Boolean).join(" ");
   if (str("server.address")) return str("server.address")!;
-  // Messaging span names are "<destination> <operation>", e.g. "orders publish".
-  if (s.kind === "producer") { const m = s.name.match(/^(.+) (publish|send|create)$/); if (m) return m[1]; }
+  // Messaging span names carry the destination: "send orders" (current
+  // conventions) or "orders publish" (older ones).
+  if (s.kind === "producer") {
+    const m = s.name.match(/^(?:(?:publish|send|create) (.+)|(.+) (?:publish|send|create))$/);
+    if (m) return m[1] ?? m[2];
+  }
   const url = str("url.full") ?? str("http.url");
   if (url) { try { return new URL(url).host; } catch { /* not a URL */ } }
   return `${s.name} (unknown peer)`;
 }
 
 /**
+ * Mirrors service_map() in server/signal_lab/checks.py, which grades map goals:
+ * keep the two in step.
+ *
  * Build a service map from spans, the way backends do: an arrow for every
  * client or producer span, pointing at the service whose server or consumer
  * span handled it, or at an external dependency named by the span's attributes.
