@@ -12,6 +12,9 @@ export interface GraphNode {
 }
 export interface GraphEdge { from: string; to: string; label?: string; error?: boolean; title?: string; onClick?: () => void }
 
+// Edge labels sit mid-arrow: below the line for a downward arrow, above it
+// otherwise, so labels of arrows fanning out from one service don't stack.
+const LABEL_AT = 0.5;
 const CHAR_W = 6.7; // IBM Plex Mono at 11px
 const nodeWidth = (id: string) => Math.max(72, Math.round(id.length * CHAR_W + 34));
 
@@ -36,7 +39,7 @@ export function ServiceGraph({ nodes, edges, label = "Service map" }: { nodes: G
     const order = [...cols.keys()].sort((a, b) => a - b);
     const colWidth = order.map((d) => Math.max(...cols.get(d)!.map((n) => nodeWidth(n.id))));
     // Room between columns for the longest edge label (10px mono ≈ 6.1px/char).
-    const gap = Math.max(56, ...edges.map((e) => Math.round((e.label?.length ?? 0) * 6.1) + 28));
+    const gap = Math.max(56, ...edges.map((e) => Math.round((e.label?.length ?? 0) * 6.1) + 44));
     const pad = 8, rowH = 44;
     const W = colWidth.reduce((a, b) => a + b, 0) + gap * Math.max(0, order.length - 1) + pad * 2;
     // Arrows that skip a column curve over the top, so they need headroom.
@@ -68,13 +71,13 @@ export function ServiceGraph({ nodes, edges, label = "Service map" }: { nodes: G
         const d = skip
           ? `M${a.x} ${a.y - 13} C${a.x} ${cy} ${b.x} ${cy} ${b.x} ${b.y - 15}`
           : `M${x1} ${a.y} L${x2} ${b.y}`;
-        const lx = (a.x + b.x) / 2, ly = skip ? cy + 16 : (a.y + b.y) / 2 - 6;
+        const lx = (a.x + b.x) / 2, ly = cy + 16;
         return (
           <g key={`${e.from}->${e.to}`} className={`svc-edge ${e.onClick ? "clickable" : ""}`} onClick={e.onClick}>
             {e.title && <title>{e.title}</title>}
             <path d={d} fill="none" stroke={e.error ? "var(--err)" : "var(--border-strong)"} strokeWidth="1.2" markerEnd={`url(#${e.error ? "arrow-err" : "arrow"})`} />
             <path d={d} fill="none" stroke="transparent" strokeWidth="12" />
-            {e.label && <text className="svc-edge-label" x={skip ? lx : (x1 + x2) / 2} y={ly} textAnchor="middle">{e.label}</text>}
+            {e.label && <text className="svc-edge-label" x={skip ? lx : x1 + (x2 - x1) * LABEL_AT} y={skip ? ly : a.y + (b.y - a.y) * LABEL_AT + (b.y > a.y + 1 ? 13 : -5)} textAnchor="middle">{e.label}</text>}
           </g>
         );
       })}
