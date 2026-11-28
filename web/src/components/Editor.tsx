@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, tooltips, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, placeholder as placeholderExt } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { classHighlighter } from "@lezer/highlight";
@@ -112,6 +112,10 @@ export default function Editor({ value, onChange, language, onRun, readOnly, com
       syntaxHighlighting(classHighlighter),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
       languageExtension(language, promqlUrl),
+      // CodeMirror's default indent unit is 2 spaces; Python (PEP 8, and every
+      // starter here) uses 4, so Enter and Tab must too. YAML keeps 2.
+      indentUnit.of(language === "python" ? "    " : "  "),
+      EditorState.tabSize.of(language === "python" ? 4 : 2),
       theme,
       EditorView.updateListener.of((u) => { if (u.docChanged) handlers.current.onChange?.(u.state.doc.toString()); }),
       EditorState.readOnly.of(!!readOnly),
