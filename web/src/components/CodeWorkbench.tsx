@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BarChart3, CheckCircle2, CircleDashed, Eye, FileCode2, Play, RotateCcw, ScrollText, Settings2, SquareTerminal, XCircle, ExternalLink } from "lucide-react";
+import { Activity, BarChart3, Network, CheckCircle2, CircleDashed, Eye, FileCode2, Play, RotateCcw, ScrollText, Settings2, SquareTerminal, XCircle, ExternalLink } from "lucide-react";
 import type { CheckResult, Lesson, RunSummary, SignalConfirm } from "../api";
 import { useLab } from "../context";
 import { modKey } from "../lib/hooks";
@@ -8,11 +8,12 @@ import { useRun } from "../lib/useRun";
 import { fmtDuration } from "../lib/format";
 import Editor from "./Editor";
 import TraceView from "./inspector/TraceView";
+import MapView from "./inspector/MapView";
 import MetricsView from "./inspector/MetricsView";
 import LogsView from "./inspector/LogsView";
 import { Empty, Split } from "./ui";
 
-type Tab = "console" | "traces" | "metrics" | "logs" | "env";
+type Tab = "console" | "traces" | "map" | "metrics" | "logs" | "env";
 
 function primaryTab(lesson: Lesson): Tab {
   const types = lesson.checks.map((c) => c.type);
@@ -146,6 +147,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number; color?: string }[] = [
     { id: "console", label: "Console", icon: <SquareTerminal /> },
     { id: "traces", label: "Traces", icon: <Activity />, count: counts.traces, color: "var(--trace)" },
+    { id: "map", label: "Map", icon: <Network />, color: "var(--trace)" },
     { id: "metrics", label: "Metrics", icon: <BarChart3 />, count: counts.metrics, color: "var(--metric)" },
     { id: "logs", label: "Logs", icon: <ScrollText />, count: counts.logs, color: "var(--log)" },
     { id: "env", label: "Environment", icon: <Settings2 /> },
@@ -181,6 +183,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
           )
         )}
         {tab === "traces" && <TraceView spans={telemetry.spans} backends={backends} focus={focus} logs={telemetry.logs} onShowLogs={(id) => { setLogSpan(id); pick("logs"); }} />}
+        {tab === "map" && <MapView spans={telemetry.spans} onEdge={(s) => jumpToTrace(s.trace_id, s.span_id)} />}
         {tab === "metrics" && <MetricsView metrics={telemetry.metrics} backends={backends} onExemplar={jumpToTrace} />}
         {tab === "logs" && <LogsView logs={telemetry.logs} onTrace={jumpToTrace} focusSpan={logSpan} />}
         {tab === "env" && (
