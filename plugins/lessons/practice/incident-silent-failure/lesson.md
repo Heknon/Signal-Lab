@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 5
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       storefront:
@@ -32,7 +34,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -68,12 +70,24 @@ quiz:
     prompt: Write a query for the share of successful checkouts that actually produced an order.
     must_include:
     - shop_order_value
+    - shop_checkouts_total
     expect:
       value:
+        gt: 0.2
         lt: 0.8
     hint: Divide the rate of `shop_order_value_USD_count` by the rate of `shop_checkouts_total{outcome="ok"}`.
     placeholder: sum(rate(shop_order_value_USD_count[5m])) / sum(rate(shop_checkouts_total{outcome="ok"}[5m]))
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: outcome\s*=\s*"ok"
+      message: Divide by successful checkouts only (`outcome="ok"`).
+    - pattern: \b(rate|increase|irate)\s*\(
+      message: These are counters; take their `rate()` over a short window first, or the result is a total since each process started.
+    mistakes:
+    - pattern: \b1\s*-
+      message: That's the share that went missing; the question asks for the share that produced an order.
+    - pattern: http_server_request_duration
+      message: HTTP requests include page views and product lookups. Compare against successful checkouts.
 ---
 
 **#finance, 16:20**: *"Revenue today is down about 40% vs the same time last week. Is something broken?"* No alerts have fired.

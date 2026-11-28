@@ -83,6 +83,15 @@ def lint_lesson(path: Path, root: Path, skip: set[str], rep: Report, packed: set
         for t in re.findall(r"^\s*(?:-\s+)?type:\s*[\"']?([\w.-]+)", checks_raw, re.M):
             if t not in types:
                 rep.error(where, f"check type '{t}' is not defined in adapter.md Check types ({', '.join(sorted(types))})")
+    quiz = fm.get("quiz") if isinstance(fm.get("quiz"), dict) else {}
+    for q in quiz.get("questions") or []:
+        if not isinstance(q, dict):
+            continue
+        for o in q.get("options") or []:
+            if isinstance(o, dict) and isinstance(o.get("id"), bool):
+                rep.error(where, f"question {q.get('id')}: option id {o['id']!r} is a YAML boolean (write yes/no/on/off in quotes)")
+        if isinstance(q.get("answer"), bool):
+            rep.error(where, f"question {q.get('id')}: answer {q['answer']!r} is a YAML boolean (quote it)")
     if kind in NEEDS_HINTS and "hints" not in skip and not fm.get("hints"):
         rep.error(where, "no hints")
 

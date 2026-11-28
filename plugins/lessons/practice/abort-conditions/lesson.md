@@ -40,8 +40,8 @@ quiz:
     - id: errors
       prompt: Did the shop return errors during the fault?
       options:
-        - {id: no, label: "Barely: requests waited instead of failing"}
-        - {id: yes, label: "Yes, most requests failed"}
+        - {id: "no", label: "Barely: requests waited instead of failing"}
+        - {id: "yes", label: "Yes, most requests failed"}
       answer: "no"
       explanation: Saturation shows up as latency first. Alerting on errors alone would have missed this.
 ---
@@ -59,5 +59,5 @@ abort condition is 1.5 s. Watch what happens to the red line.
 
 > [!NOTE]
 > The experiment also raises traffic through the load generator. While it's
-> running, open Grafana and look at
-> `db_client_connection_pending_requests` and `db_client_connection_count`.
+> running, open Grafana and look at inventory's `db_client_connection_*`
+> metrics: which one moves first?

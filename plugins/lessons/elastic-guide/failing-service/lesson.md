@@ -23,7 +23,7 @@ quiz:
       explanation: "storefront and checkout fail too, but only because the call below them failed. In a failed trace, payments' transaction is the deepest one marked as failed: nothing it calls has failed."
       hint: Open a failed `POST /api/checkout` trace and walk down the waterfall to the last failed transaction.
     - id: status
-      prompt: "Which HTTP status code does the source service return for the failing requests?"
+      prompt: "Which HTTP status code does the source service return for the failing requests? (the number)"
       input: text
       answer: "503"
       explanation: "503 Service Unavailable. checkout turns it into a 502 for storefront, which returns 502 to the user: the original code only survives on the deepest span."
@@ -39,13 +39,13 @@ quiz:
       explanation: "The fault fails 40% of payments requests. checkout's rate matches it (every payment failure fails the order), while storefront's is lower because its product listing doesn't involve payments."
       hint: It's on the service inventory and on the service's Overview.
     - id: errors-tab
-      prompt: "The source service's **Errors** tab includes `CardDeclined: card declined by issuer` and `RuntimeError: payments is having a bad day (injected fault)`. Which one is the incident?"
+      prompt: "The source service's **Errors** tab includes `CardDeclined: card declined by issuer` and `RuntimeError: <service> is having a bad day (injected fault)`. Which one is the incident?"
       options:
-        - {id: runtime, label: "The `RuntimeError`: it appeared when the failures started, and its count tracks the failed transaction rate"}
-        - {id: declined, label: "`CardDeclined`: it's a payment error"}
+        - {id: runtime, label: "`RuntimeError`"}
+        - {id: declined, label: "`CardDeclined`"}
         - {id: both, label: "Both equally"}
       answer: runtime
-      explanation: "About 2% of cards are declined in normal traffic, so `CardDeclined` was there before the incident and its rate didn't change. Always compare against what's normal: the new error group, and the one whose count follows the failure rate, is the incident."
+      explanation: "About 2% of cards are declined in normal traffic, so `CardDeclined` was there before the incident and didn't grow (it even drops a little: requests that fail on the injected fault never reach the card issuer). Always compare against what's normal: the new error group, and the one whose count follows the failure rate, is the incident."
       hint: Look at each group's occurrences over time. Which one was already there an hour ago?
 ---
 

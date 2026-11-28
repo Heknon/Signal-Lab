@@ -127,7 +127,7 @@ export default function ActivityPanel({ lesson }: { lesson: Lesson }) {
             {a.status === "aborted" ? a.reason
               : a.status === "stopped" ? a.reason
               : isExperiment ? (a.hypothesis_held ? "Hypothesis held: steady state stayed within the threshold." : "Hypothesis rejected: steady state crossed the threshold.")
-              : `Incident over. The fault started at ${a.fault_started ? new Date(a.fault_started * 1000).toLocaleTimeString() : "?"}.`}
+              : "Incident over. The data stays in the backends, so you can keep investigating."}
           </span>
         )}
         {other && <span className="activity-status"><span className="dot dot-warn" />{other.by} is running “{other.title}” ({fmtClock(Math.max(0, other.ends - other.now))} left). The shop is shared, so wait for it to finish.</span>}

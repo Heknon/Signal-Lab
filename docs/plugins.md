@@ -291,8 +291,13 @@ incident:
   metrics_only: true
   timeline:
     - {at: 0, load: 5}
-    - {at: 75, fault: true, set: {payments: {error_rate: 0.35}, checkout: {retries: 3}}}
+    - {at: {min: 150, max: 420}, fault: true, set: {payments: {error_rate: 0.35}, checkout: {retries: 3}}}
 ```
+
+`at` is seconds from the start, or a `{min, max}` range drawn once per run.
+Use a range for the fault step of an incident that asks when it started:
+with a fixed offset, the time Start was pressed is always within tolerance.
+The real start is never sent to learners; a correct answer reveals it.
 
 `set` accepts every fault the scenario supports. The Signal Shop's are
 `latency_ms`, `error_rate`, `slow_sku`/`slow_sku_ms`, `retries`, `pool_size`,
@@ -303,13 +308,14 @@ Questions for these lessons go in `quiz:` and may use three extra kinds:
 
 ```yaml
 - {id: outcome, kind: outcome, prompt: Did it hold?, options: [{id: held, ...}, {id: rejected, ...}, {id: aborted, ...}]}
-- {id: start, kind: time, prompt: When did it start?, tolerance_s: 120}   # graded against the real fault start
+- {id: start, kind: time, prompt: When did it start?, tolerance_s: 60}   # graded against the real fault start
 - id: evidence
   kind: query
   prompt: Write a query that shows it.
   must_include: [histogram_quantile]
   expect: {top: {http_route: /reserve}}       # the highest row has this label value
-  # or: expect: {value: {gt: 1.3}}             # the highest value is in range
+  # or: expect: {value: {gt: 1.3, lt: 1.9}}    # the highest value is in range (bound both sides)
+  # must_match / mistakes / reference work as in query checks (see above)
 ```
 
 `scripts/test_incidents.py` applies each incident's faults and checks that a

@@ -21,7 +21,7 @@ quiz:
         - {id: payments, label: payments}
       answer: payments
       explanation: "storefront and checkout log errors too, but theirs are about a call that failed (`HTTP 502`, `payment failed`). payments' ERROR lines are about payments itself: nothing below it failed."
-      hint: "Count ERROR lines per service with `severity_text:=ERROR | stats by (service.name) count()`, then read what each service's errors actually say."
+      hint: "Count ERROR lines per shop service with `service.name:in(storefront, checkout, inventory, payments) severity_text:=ERROR | stats by (service.name) count()`, then read what each service's errors actually say."
     - id: message
       prompt: "What is the exact message (`_msg`) of the source service's new ERROR lines?"
       input: text

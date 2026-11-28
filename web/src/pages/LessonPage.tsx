@@ -206,7 +206,7 @@ export default function LessonPage() {
           {scenarioNote && scenarioNote.length > 0 && (
             <div className="scenario-banner">
               <FlaskConical />
-              <span>{l.scenario?.note ?? "This lesson changed the scenario."} Faults are active on <b>{scenarioNote.join(", ")}</b>. <a href="#" onClick={(e) => { e.preventDefault(); setScenarioOpen(true); }} style={{ textDecoration: "underline" }}>Open scenario</a></span>
+              <span>{l.scenario?.note ?? "This lesson changed the scenario."} {complete ? <>Faults are active on <b>{scenarioNote.join(", ")}</b>.</> : "Finding where is the exercise."} <a href="#" onClick={(e) => { e.preventDefault(); setScenarioOpen(true); }} style={{ textDecoration: "underline" }}>Open scenario</a></span>
             </div>
           )}
           <Goals lesson={l} results={results} checking={checking} />

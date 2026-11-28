@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -65,8 +66,9 @@ class Activity:
             "phases": self.phases, "status": self.status, "reason": self.reason, "samples": self.samples,
             "steady": self.steady, "hypothesis_held": self.hypothesis_held,
         }
-        # An incident's true start is the answer to a question: only reveal it once it's over.
-        if self.kind == "experiment" or reveal or self.status != "running":
+        # An incident's true start is the answer to a question, so it is never sent to
+        # learners; the answer's explanation reveals it once they get it right.
+        if self.kind == "experiment" or reveal:
             out["fault_started"] = self.fault_started
             out["fault_ended"] = self.fault_ended
         return out
@@ -189,12 +191,18 @@ class Drills:
 
     async def _incident(self, act: Activity, spec: dict) -> None:
         await self.reset()
-        steps = sorted(spec.get("timeline", []), key=lambda s: s.get("at", 0))
+        # `at` may be a range ({min, max}), drawn once per run, so the fault start has
+        # to be read from the data rather than from when Start was pressed.
+        def at(s: dict) -> float:
+            a = s.get("at", 0)
+            return random.uniform(float(a.get("min", 0)), float(a.get("max", a.get("min", 0)))) if isinstance(a, dict) else float(a)
+
+        steps = sorted(({**s, "at": at(s)} for s in spec.get("timeline", [])), key=lambda s: s["at"])
         i = 0
         act.phase = "investigating"
         while time.time() < act.ends:
             elapsed = time.time() - act.started
-            while i < len(steps) and steps[i].get("at", 0) <= elapsed:
+            while i < len(steps) and steps[i]["at"] <= elapsed:
                 step = steps[i]
                 if step.get("reset"):
                     await self.reset()

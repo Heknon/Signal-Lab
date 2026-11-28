@@ -18,9 +18,11 @@ incident:
   timeline:
   - at: 0
     load: 4
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
-    load: 14
+    load: 9
     set:
       inventory:
         pool_size: 1
@@ -33,7 +35,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -71,10 +73,19 @@ quiz:
     - pending
     expect:
       value:
-        gt: 0
+        gt: 2
     hint: Look for a `db_client_connection_*` metric about pending requests.
     placeholder: db_client_connection_pending_requests
     explanation: That's the evidence. Put it in the incident write-up.
+    mistakes:
+    - pattern: \bcount\s*\(
+      message: '`count()` counts series, not waiting requests: it is 1 on a healthy shop too.'
+    - pattern: \b(rate|increase|irate|deriv)\s*\(
+      message: Pending requests is a gauge (a level, not a counter); read its value, or its max over a window.
+    - pattern: \+
+      message: Adding other metrics hides the signal; show the pending requests on their own.
+    - pattern: \[\s*(\d+[hdw]|(1[6-9]|[2-9]\d|\d{3,})m)\s*\]
+      message: That window reaches back before this incident. Look at the last few minutes.
 ---
 
 **#marketing, 11:05**: *"Newsletter went out at 11:00, traffic is up."* **#support, 11:09**: *"Site feels slow."* Error-rate alerts are quiet.

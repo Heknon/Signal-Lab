@@ -140,6 +140,7 @@ async def get_stats() -> dict:
 @app.post("/_chaos")
 async def set_chaos(c: Chaos) -> dict:
     target_version = c.version
+    had_user_ids = chaos["label_user_id"]
     if c.reset:
         chaos.update(DEFAULTS)
         leaked.clear()
@@ -160,6 +161,10 @@ async def set_chaos(c: Chaos) -> dict:
     if target_version and target_version != chaos["version"]:
         chaos["version"] = target_version
         asyncio.get_running_loop().call_later(0.3, _restart, {"version": target_version})
+    elif had_user_ids and not chaos["label_user_id"]:
+        # The SDK keeps exporting every attribute set it has seen (cumulative counters),
+        # so the series created by user ids would never go away without a new process.
+        asyncio.get_running_loop().call_later(0.3, _restart, {})
     return chaos | {"active": chaos_active()}
 
 

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { useProgress } from "../lib/progress";
 import { RotateCcw, X } from "lucide-react";
 import { api, type Scenario, type ScenarioService } from "../api";
 import { useLab } from "../context";
@@ -6,10 +8,10 @@ import { useAsync } from "../lib/hooks";
 import { ServiceGraph } from "./ServiceGraph";
 import { Empty } from "./ui";
 
-function ServiceMap({ services }: { services: ScenarioService[] }) {
+function ServiceMap({ services, hideFaults }: { services: ScenarioService[]; hideFaults?: boolean }) {
   const nodes = services.map((s) => {
     const chaos = s.stats?.chaos;
-    const faulty = !!chaos && (chaos.latency_ms > 0 || chaos.error_rate > 0);
+    const faulty = !hideFaults && !!chaos && (chaos.latency_ms > 0 || chaos.error_rate > 0);
     return { id: s.id, stroke: faulty ? "var(--warn)" : s.online ? undefined : "var(--err)", dot: s.online ? undefined : "var(--err)" };
   });
   const edges = services.flatMap((s) => s.calls.map((c) => ({ from: s.id, to: c })));
@@ -37,6 +39,14 @@ function Slider({ label, value, min, max, step, format, onCommit }: { label: str
 
 export default function ScenarioDrawer() {
   const { scenarioOpen, setScenarioOpen, toast } = useLab();
+  // A lesson that sets up a fault asks you to find it: don't point at it here
+  // until the lesson is done (or you ask to see it).
+  const location = useLocation();
+  const p = useProgress();
+  const lessonId = location.pathname.startsWith("/learn/") ? decodeURIComponent(location.pathname.slice(7)) : null;
+  const lessonFaults = lessonId ? api.loadedLesson(lessonId)?.scenario?.chaos : undefined;
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const hideFaults = !!lessonId && !!lessonFaults && Object.keys(lessonFaults).length > 0 && !p.completed[lessonId] && revealed !== lessonId;
   const state = useAsync<Scenario>(api.scenario, [scenarioOpen], scenarioOpen ? 2000 : undefined);
   useEffect(() => {
     if (!scenarioOpen) return;
@@ -69,7 +79,7 @@ export default function ScenarioDrawer() {
           {state.error && <Empty title="Scenario unavailable">{state.error.message}</Empty>}
           {s && (
             <>
-              <ServiceMap services={services} />
+              <ServiceMap services={services} hideFaults={hideFaults} />
               {gen && (
                 <div className="card svc-card">
                   <div className="svc-head">
@@ -80,7 +90,13 @@ export default function ScenarioDrawer() {
                 </div>
               )}
               <div className="section-label" style={{ marginTop: 20 }}>Faults</div>
-              {apps.map((svc) => {
+              {hideFaults && (
+                <div className="card svc-card">
+                  <p className="muted" style={{ margin: 0 }}>This lesson set up a fault for you to find, so which service has it is hidden until you finish the lesson.</p>
+                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setRevealed(lessonId)}>Show anyway</button>
+                </div>
+              )}
+              {!hideFaults && apps.map((svc) => {
                 const st = svc.stats;
                 const faulty = !!st && (st.chaos.latency_ms > 0 || st.chaos.error_rate > 0);
                 return (

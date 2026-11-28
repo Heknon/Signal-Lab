@@ -1,6 +1,6 @@
 ---
 title: It's only some customers
-summary: Error rate rose a little after this morning's deploy. Support says it's only certain customers.
+summary: Error rate rose a little after this morning's deploys. Support says it's only certain customers.
 kind: incident
 minutes: 15
 concepts:
@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 5
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       checkout:
@@ -33,7 +35,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -72,12 +74,24 @@ quiz:
     expect:
       top:
         app_user_tier: gold
+      value:
+        gt: 0.1
     hint: Rate of `shop_checkouts_total{outcome="failed"}` split by `app_user_tier`.
     placeholder: sum by (app_user_tier) (rate(shop_checkouts_total{outcome="failed"}[5m]))
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: outcome\s*=\s*"failed"
+      message: Count the failed checkouts (`outcome="failed"`), so the top row is where failures come from.
+    - pattern: \b(rate|increase|irate)\s*\(
+      message: These are counters; take their `rate()` over a short window first, or the result is a total since each process started.
+    mistakes:
+    - pattern: \bcount\s*(by|\()
+      message: '`count` counts series, which is the same for every tier. Take the rate of failures.'
+    - pattern: \b(bottomk|topk)\s*\(
+      message: Pick the tier from the failure numbers themselves, not by ranking traffic.
 ---
 
-**#deploys, 09:30**: *checkout 1.5.0 rolled out.* **#support, 09:41**: *"Our best customers can't check out!"*
+**#deploys**: *payments 2.3.1, inventory 3.4.0 and checkout 1.5.0 rolled out this morning.* **#support, 09:41**: *"Some customers can't check out. Others are fine. Can't see a pattern."*
 
 ## Your job
 

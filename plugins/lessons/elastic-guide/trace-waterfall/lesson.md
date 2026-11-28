@@ -9,7 +9,7 @@ tools: ["elastic:apm"]
 quiz:
   questions:
     - id: services
-      prompt: "Open a `POST /api/checkout` trace from **storefront**. Not counting `loadgen`, how many services take part?"
+      prompt: "Open a `POST /api/checkout` trace from **storefront**. Not counting `loadgen`, how many services take part? (a number)"
       input: text
       answer: "4"
       explanation: "storefront → checkout → inventory and payments (plus loadgen at the root if you view the full trace: its client span starts it all). Each appears as its own transaction in the waterfall, nested under the client span that called it."
@@ -21,7 +21,7 @@ quiz:
         - {id: reserve, label: "The call to inventory (POST /reserve)"}
         - {id: charge, label: "The call to payments (POST /charge)"}
       answer: charge
-      explanation: "The payment call dominates: payments waits 20-60 ms on its (simulated) provider in `provider.authorize`. Pricing takes a few milliseconds and the stock reservation around 10."
+      explanation: "The payment call dominates: payments waits 60-120 ms on its (simulated) provider in `provider.authorize`. Pricing takes a few milliseconds and the stock reservation about 40 ms."
       hint: Compare the bar lengths of the spans directly under checkout's transaction.
     - id: provider
       prompt: "Expand the payments transaction. What is the name of the span that talks to the payment provider?"
@@ -62,7 +62,3 @@ Things to look for:
 - **The critical path**: the chain of spans that decides the total duration.
   Speeding up anything off that path won't make the request faster.
 
-> [!TIP]
-> Auto-instrumentation adds small `http send` / `http receive` spans for the
-> ASGI layer. They're noise for this exercise: look at the larger spans
-> around them.

@@ -16,7 +16,7 @@ quiz:
         - {id: any, label: Any span with a duration over 1 ms}
         - {id: db, label: A database transaction}
       answer: server
-      explanation: "APM Server turns each service's incoming (server or consumer) spans into transactions, and everything inside them into spans. One trace through the shop has a transaction per service it touched."
+      explanation: "APM Server turns each service's incoming (server or consumer) spans, and every root span, into transactions, and everything inside them into spans. One trace through the shop has a transaction per service it touched."
       hint: Open one service and look at what the Transactions table lists. Are those requests it received, or calls it made?
     - id: inventory-groups
       prompt: "Open **inventory**. Which transaction groups does it have from shop traffic?"
@@ -27,15 +27,17 @@ quiz:
         - {id: charge, label: "POST /charge"}
         - {id: products, label: "GET /api/products"}
       answer: [stock, reserve]
-      explanation: "A transaction group is every transaction with the same name. inventory serves stock lookups for the storefront and reservations for checkout. (You may also see `GET /_stats`: that's the lab's scenario panel polling it.)"
+      explanation: "A transaction group is every transaction with the same name. inventory serves stock lookups for the storefront and reservations for checkout."
       hint: Services → inventory → Transactions.
     - id: slowest
-      prompt: "Open **storefront**. Which of its transaction groups has the higher latency?"
+      prompt: "Open **storefront**. Roughly how much slower is `POST /api/checkout` than `GET /api/products`, on average?"
       options:
-        - {id: checkout, label: "POST /api/checkout"}
-        - {id: products, label: "GET /api/products"}
-      answer: checkout
-      explanation: "/api/checkout waits for checkout, which waits for inventory and payments in turn. /api/products only asks inventory for stock."
+        - {id: same, label: "About the same"}
+        - {id: x3, label: "About 3×"}
+        - {id: x10, label: "About 10×"}
+        - {id: x30, label: "About 30×"}
+      answer: x3
+      explanation: "Around 150 ms against 50 ms. /api/checkout waits for checkout, which waits for inventory and payments in turn; /api/products only asks inventory for stock."
       hint: Compare the latency column in the storefront's Transactions table.
     - id: checkout-calls
       prompt: "Which services does **checkout** call?"
@@ -75,7 +77,7 @@ Elastic uses its own words for OpenTelemetry concepts:
 | Every other span | **span** |
 | Span name of a server span, e.g. `POST /api/checkout` | `transaction.name`, grouped into a **transaction group** |
 | Span status `ERROR` / HTTP 5xx | `event.outcome: failure` |
-| Attributes Elastic has no field for, e.g. `app.order.id` | `labels.app_order_id` |
+| Attributes Elastic has no field for, e.g. `app.user.tier` | `labels.app_user_tier` |
 
 Click into a service to see its transaction groups, then open the
 **Service map** to see how the services connect.

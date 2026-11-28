@@ -35,7 +35,7 @@ quiz:
         - {id: twice, label: "Checkout calls inventory twice per order"}
         - {id: cpu, label: "The fault also made checkout's CPU busy"}
       answer: jitter
-      explanation: The fault adds 300 ms ± 30%. A percentile sits on the slow side of that spread, which is why you test with percentiles, not averages.
+      explanation: "The fault adds 300 ms ± 30%, and a percentile sits on the slow side of that spread, which is why you test with percentiles, not averages. The rest is the histogram: p95 is interpolated inside wide buckets (0.25 to 0.5 to 0.75 s), so an estimate can move further than the real latency did."
     - id: radius
       prompt: Which service got slower without being touched? Check in Grafana.
       options:
