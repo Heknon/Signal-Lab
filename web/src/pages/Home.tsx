@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, ExternalLink, Lock } from "lucide-react";
-import type { Pack } from "../api";
+import { api, type Pack } from "../api";
 import { useLab, type FlatLesson } from "../context";
 import { lessonState, progress, useProgress, type Progress } from "../lib/progress";
 import TopBar from "../components/TopBar";
@@ -60,7 +60,7 @@ function Track({ pack }: { pack: Pack }) {
               <ul className="lesson-list">
                 {m.lessons.map((l) => (
                   <li key={l.id}>
-                    <Link to={`/learn/${l.id}`} className={`lesson-row ${pack.locked ? "locked" : ""}`} title={l.summary}>
+                    <Link to={`/learn/${l.id}`} onMouseEnter={() => api.prefetchLesson(l.id)} className={`lesson-row ${pack.locked ? "locked" : ""}`} title={l.summary}>
                       <StateIcon state={lessonState(p, l.id)} />
                       <span className="title">{l.title}</span>
                       <span className="meta">{l.kind !== "code" && <KindLabel kind={l.kind} />}<span className="mins">{l.minutes} min</span></span>

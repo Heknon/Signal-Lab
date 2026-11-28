@@ -1,26 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * Load data for `deps`, optionally polling every `intervalMs`.
+ *
+ * - When deps change, the new request always runs, and results of older requests
+ *   are dropped: responses can arrive out of order (A -> B -> C with B slowest
+ *   must not show B at C). `data` is cleared, so callers never render the
+ *   previous deps' data as if it were current.
+ * - Polls never stack: a tick is skipped while a request is in flight (browsers
+ *   allow only 6 connections per host), and polling pauses in hidden tabs.
+ */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], intervalMs?: number) {
   const [data, setData] = useState<T | undefined>();
   const [error, setError] = useState<Error | undefined>();
   const [loading, setLoading] = useState(true);
   const fnRef = useRef(fn);
   fnRef.current = fn;
-  // Never stack polls: a slow endpoint must not pile up requests, because browsers
-  // allow only 6 connections per host and a queued request stalls navigation.
-  const inFlight = useRef<Promise<void> | null>(null);
-  const reload = useCallback(() => {
-    if (inFlight.current) return inFlight.current;
-    return (inFlight.current = fnRef.current().then(
-      (d) => { setData(d); setError(undefined); },
-      (e: Error) => setError(e),
-    ).finally(() => { setLoading(false); inFlight.current = null; }));
+  const gen = useRef(0);
+  const inFlight = useRef(false);
+  const load = useCallback((g: number) => {
+    inFlight.current = true;
+    return fnRef.current().then(
+      (d) => { if (g === gen.current) { setData(d); setError(undefined); } },
+      (e: Error) => { if (g === gen.current) setError(e); },
+    ).finally(() => { if (g === gen.current) { setLoading(false); inFlight.current = false; } });
   }, []);
+  const reload = useCallback(() => load(gen.current), [load]);
   useEffect(() => {
+    const g = ++gen.current;
+    setData(undefined);
+    setError(undefined);
     setLoading(true);
-    reload();
+    load(g);
     if (!intervalMs) return;
-    const id = window.setInterval(() => { if (document.visibilityState === "visible") reload(); }, intervalMs);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible" && !inFlight.current) load(g);
+    }, intervalMs);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

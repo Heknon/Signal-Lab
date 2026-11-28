@@ -139,6 +139,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 
+const lessonCache = new Map<string, Promise<Lesson>>();
+const lessonsLoaded = new Map<string, Lesson>();
+
 export const api = {
   me: () => request<Me>("/api/me"),
   login: (username: string, password: string) => post<{ user: User }>("/api/auth/login", { username, password }),
@@ -151,7 +154,21 @@ export const api = {
   meta: () => request<Meta>("/api/meta"),
   health: () => request<Health>("/api/health"),
   course: () => request<Pack[]>("/api/course"),
-  lesson: (id: string) => request<Lesson>(`/api/lessons/${id}`),
+  /** Cached: lessons don't change while you browse, so revisiting or moving to a
+   *  prefetched neighbour is instant. A failed load isn't cached. */
+  lesson: (id: string): Promise<Lesson> => {
+    let p = lessonCache.get(id);
+    if (!p) {
+      p = request<Lesson>(`/api/lessons/${id}`);
+      lessonCache.set(id, p);
+      p.then((l) => lessonsLoaded.set(id, l), () => undefined);
+      p.catch(() => lessonCache.delete(id));
+    }
+    return p;
+  },
+  prefetchLesson: (id: string) => { void api.lesson(id).catch(() => undefined); },
+  /** A lesson that has already loaded, available synchronously (no blank frame). */
+  loadedLesson: (id: string): Lesson | undefined => lessonsLoaded.get(id),
   run: (lesson: string, code: string) => post<RunSummary>("/api/runs", { lesson, code }),
   query: (backend: string, language: string, query: string, lesson?: string, range_s?: number) =>
     post<{ result: QueryResult; checks: CheckResult[] }>("/api/query", { backend, language, query, lesson, range_s }),
