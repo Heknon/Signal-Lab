@@ -4,18 +4,18 @@ summary: Carry trace context inside a message so the consumer continues the prod
 kind: code
 minutes: 7
 concepts: [producer, consumer, carrier, extract]
-assumes: [Propagating context over HTTP]
+assumes: [Propagating context over HTTP, Publishing to a queue]
 runtime:
   service: order-pipeline
 checks:
   - id: producer
     type: span
-    title: "`orders publish` is a `producer` span"
-    where: {name: orders publish, kind: producer}
+    title: "`send orders` is a `producer` span"
+    where: {name: send orders, kind: producer}
   - id: consumer
     type: span
-    title: "`orders process` is a `consumer` span whose parent is `orders publish`"
-    where: {name: orders process, kind: consumer, parent: orders publish}
+    title: "`process orders` is a `consumer` span whose parent is `send orders`"
+    where: {name: process orders, kind: consumer, parent: send orders}
     count: 3
 hints:
   - "Producer: `propagate.inject(message[\"headers\"])` inside the publish span."
@@ -28,13 +28,13 @@ same everywhere:
 
 ```python
 # producer
-with tracer.start_as_current_span("orders publish", kind=SpanKind.PRODUCER):
+with tracer.start_as_current_span("send orders", kind=SpanKind.PRODUCER):
     propagate.inject(message["headers"])
     queue.put(message)
 
 # consumer: maybe a different process, minutes later
 ctx = propagate.extract(message["headers"])
-with tracer.start_as_current_span("orders process", context=ctx, kind=SpanKind.CONSUMER):
+with tracer.start_as_current_span("process orders", context=ctx, kind=SpanKind.CONSUMER):
     ...
 ```
 
@@ -42,9 +42,10 @@ with tracer.start_as_current_span("orders process", context=ctx, kind=SpanKind.C
 span its child instead of starting a new trace.
 
 > [!TIP]
-> Messaging semantic conventions name spans `"{destination} {operation}"`,
-> e.g. `orders publish` / `orders process`, so backends can draw the queue as
-> an edge in the service map.
+> The span names follow the messaging conventions, `{operation} {destination}`:
+> `send orders` on the producer, `process orders` on the consumer. Together with
+> `messaging.destination.name`, that's what lets a backend draw the `orders`
+> queue between the two sides.
 
 ## Try it
 

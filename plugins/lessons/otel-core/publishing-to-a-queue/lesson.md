@@ -58,14 +58,15 @@ with tracer.start_as_current_span("send price-updates", kind=SpanKind.PRODUCER) 
 
 A map draws a producer span as an arrow to its destination, named by
 `messaging.destination.name`. Don't reach for `peer.service` here: the
-topic is not a service, and the services that consume it are separate
-arrows from the topic, drawn once they're instrumented.
+topic is not a service. The services that consume it sit on the other side
+of the topic, and the messaging lesson in the next module shows how they
+continue your trace.
 
 > [!NOTE]
-> Older SDKs and docs name producer spans `{destination} {operation}`, like
-> `orders publish` in the messaging lesson. The current conventions put the
-> operation first. Backends read the attributes, not the name, so both work
-> on a map.
+> Older SDKs and docs name producer spans the other way round,
+> `{destination} {operation}` (`price-updates publish`), and use `publish`
+> as the operation. You'll still see that in the wild. Backends read the
+> attributes, not the name, so both draw the same map.
 
 ## Try it
 
