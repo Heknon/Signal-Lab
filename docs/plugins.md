@@ -127,6 +127,23 @@ Passes if **any** trace in the run satisfies all conditions:
   includes_services: [storefront, inventory]
 ```
 
+#### `map`
+
+Grades the service map, built exactly as the inspector's **Map** tab draws it:
+an arrow for every `client` or `producer` span, to the service whose `server`
+or `consumer` span handled it, or else to an external dependency named by
+`peer.service`, `messaging.destination.name`, `db.system` or `server.address`.
+
+```yaml
+- type: map
+  edge:                           # an arrow that must exist
+    from: price-fetcher
+    to: price-api
+    external: false               # optional: true = dashed, known only from client spans
+    calls: {min: 2}               # optional
+  nodes_absent: [eu.prices.example]   # optional: boxes that must not appear
+```
+
 #### `metric`
 
 ```yaml

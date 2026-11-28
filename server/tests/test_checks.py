@@ -42,3 +42,34 @@ def test_log_uncorrelated():
 
 def test_pending_while_collecting():
     assert run({"type": "span", "where": {"name": "x"}}, collecting=True)["status"] == "pending"
+
+
+def test_map_external_dependencies_and_peer_service():
+    def get(sid, host, peer=None):
+        attrs = {"server.address": host} | ({"peer.service": peer} if peer else {})
+        return span("GET", sid=sid, kind="client", service="price-fetcher", attributes=attrs)
+    by_host = [get("a", "eu.prices.example"), get("b", "us.prices.example")]
+    r = run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-api"}}, by_host)
+    assert r["status"] == "fail" and "eu.prices.example" in r["detail"]
+    assert run({"type": "map", "nodes_absent": ["eu.prices.example"]}, by_host)["status"] == "fail"
+    named = [get("a", "eu.prices.example", "price-api"), get("b", "us.prices.example", "price-api")]
+    assert run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-api", "external": True, "calls": 2},
+                "nodes_absent": ["eu.prices.example", "us.prices.example"]}, named)["status"] == "pass"
+
+
+def test_map_instrumented_callee_and_same_service_server_span():
+    client = span("GET", sid="c", kind="client", service="price-fetcher", attributes={"server.address": "api"})
+    same = span("handle", sid="s", parent="c", kind="server", service="price-fetcher")
+    r = run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-api", "external": False}}, [client, same])
+    assert r["status"] == "fail"  # a server span in the caller's own service isn't a dependency
+    other = span("handle", sid="s", parent="c", kind="server", service="price-api")
+    assert run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-api", "external": False}}, [client, other])["status"] == "pass"
+    dashed = run({"type": "map", "edge": {"from": "price-fetcher", "to": "api", "external": False}}, [client])
+    assert dashed["status"] == "fail" and "dashed" in dashed["detail"]
+
+
+def test_map_producer_names_its_queue():
+    p = span("send price-updates", sid="p", kind="producer", service="price-fetcher", attributes={"messaging.destination.name": "price-updates"})
+    assert run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-updates"}}, [p])["status"] == "pass"
+    unnamed = span("send price-updates", sid="p", kind="producer", service="price-fetcher")
+    assert checks.service_map([unnamed])["edges"][0]["to"] == "price-updates"
