@@ -41,7 +41,7 @@ checks:
   tolerance: 0.05
   hint: Rate needs `rate(...[5m])`; errors are 5xx divided by all requests; duration is `histogram_quantile(0.95, ...)` over
     `_bucket`, not the average.
-  success: 'That''s checkout''s RED: a few requests per second, a couple of percent failing, and a p95 under 100 ms.'
+  success: 'That''s checkout''s RED: a few requests per second, a couple of percent failing, and a p95 of a couple of hundred milliseconds (checkout waits for inventory and payments).'
 hints: ['Rate: the raw `_count` is a counter since start-up. Wrap it in `rate(...[5m])`.', 'Errors: divide the 5xx rate by
     the rate of all requests, so it''s a ratio between 0 and 1.', 'Duration: replace the average with `histogram_quantile(0.95,
     sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m])))`.']
