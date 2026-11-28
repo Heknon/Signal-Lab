@@ -26,6 +26,8 @@ checks:
   mistakes:
   - {pattern: count\(\)\s*if\s*\(\s*-, message: 'Divide the errors by all log lines (`count()`), not only by the non-error
       ones.'}
+  must_match:
+  - {pattern: '_time:\s*(15m|900s)\b', message: 'The question asks about the last 15 minutes: start with `_time:15m`.'}
 - id: answer
   type: query
   title: Share of each service's log lines at ERROR, last 15 minutes

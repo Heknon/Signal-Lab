@@ -16,7 +16,7 @@ checks:
 - id: shape
   type: query
   title: Divide a 5xx rate by a total rate
-  must_include: [/, http_response_status_code, rate(]
+  must_include: [/, http_response_status_code]
   expect:
     rows: {min: 1}
     columns: [service_name, value]
@@ -24,11 +24,21 @@ checks:
   mistakes:
   - {pattern: 'status_code\s*=~?\s*"(2\.\.|[23]\d\d|\(2)', message: 'Divide the errors by all requests, not only the successful
       ones: errors / (errors + successes) is the error ratio.'}
-- {id: answer, type: query, title: 5xx error ratio for each service, reference: 'sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
-    / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))', tolerance: 0.05, hint: 'Count only 5xx
-    in the numerator (`=~"5.."`), everything in the denominator, and use `sum by (service_name)` on both sides so the labels
-    match.', success: 'About 2% for checkout and half that for storefront, which also serves /api/products. payments isn''t
-    here at all: its card declines are 402s.'}
+  must_match:
+  - {pattern: \b(rate|increase)\(, message: 'Use `rate(...[5m])` (or `increase`) so both sides cover the same recent window.'}
+  - {pattern: '\[\s*5m\s*\]', message: 'The question is about the last 5 minutes: use a `[5m]` window on both sides.'}
+- id: answer
+  type: query
+  title: 5xx error ratio for each service
+  reference: sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+    / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
+  tolerance: 0.05
+  hint: Count only 5xx in the numerator (`=~"5.."`), everything in the denominator, and use `sum by (service_name)` on both
+    sides so the labels match.
+  success: 'About 2% for checkout and half that for storefront, which also serves /api/products. payments isn''t here at all:
+    its card declines are 402s.'
+  alternatives: ['sum by (service_name) (increase(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+      / sum by (service_name) (increase(http_server_request_duration_seconds_count[5m]))']
 hints: ['Both sides need the same labels, or `/` finds nothing to divide. `sum by (service_name)` on each side does that.',
   'Card declines are HTTP 402. That''s a 4xx: the request was fine, the card wasn''t. Don''t count it.', 'Answer: `sum by
     (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name)

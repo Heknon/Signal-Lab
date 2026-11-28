@@ -24,6 +24,7 @@ checks:
   must_match:
   - {pattern: _count|le\s*=\s*"\+Inf", message: 'Divide by all requests: the `_count` series (or the `le="+Inf"` bucket).'}
   - {pattern: service_name\s*=\s*"storefront", message: 'The SLO is for storefront: filter both sides on `service_name="storefront"`.'}
+  - {pattern: '\[\s*5m\s*\]', message: 'The SLI is measured over the last 5 minutes: use `[5m]` on both sides.'}
   mistakes:
   - {pattern: '_bucket\{[^}]*status_code', message: 'Every request counts toward the SLI denominator and numerator alike:
       don''t drop failed ones from the fast-request count.'}

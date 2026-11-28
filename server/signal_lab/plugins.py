@@ -152,7 +152,7 @@ class Lesson:
         if quiz:  # never leak answers to the client
             quiz = {
                 "questions": [
-                    {k: v for k, v in q.items() if k not in ("answer", "explanation", "reference", "tolerance_s", "expect", "must_include", "must_match", "mistakes", "hint")} | {"id": q.get("id", f"q{i}")}
+                    {k: v for k, v in q.items() if k not in ("answer", "explanation", "reference", "tolerance_s", "expect", "must_include", "must_match", "mistakes", "alternatives", "hint")} | {"id": q.get("id", f"q{i}")}
                     for i, q in enumerate(quiz.get("questions", []))
                 ]
             }
