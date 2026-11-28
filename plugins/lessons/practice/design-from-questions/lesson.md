@@ -5,61 +5,69 @@ kind: code
 minutes: 15
 concepts: [instrumentation design, signal choice, cardinality, sampling, log correlation, telemetry budget]
 assumes: [Spans, Metrics, Histograms, Structured logs, Log correlation]
-runtime:
-  service: checkout-service
+runtime: {service: checkout-service}
 checks:
-  - id: q1-q2-metric
-    type: metric
-    title: "Q1, Q2: an `orders` counter by `outcome` and `app.payment.provider`"
-    name: orders
-    instrument: counter
-    attributes: [outcome, app.payment.provider]
-    attributes_absent: [app.order.id, app.user.id]
-    absent_hint: Ids give each order or user its own time series. They belong on the span.
-  - id: q3-metric
-    type: metric
-    title: "Q3: a `checkout.duration` histogram in seconds, by `app.user.tier`"
-    name: checkout.duration
-    instrument: histogram
-    unit: s
-    attributes: [app.user.tier]
-    attributes_absent: [app.order.id, app.user.id]
-  - id: q4-span
-    type: span
-    title: "Q4: one root `checkout` span per order with `app.order.id`, `app.user.tier` and `app.payment.provider`"
-    where:
-      name: checkout
-      parent: root
-      attributes: {app.order.id: "*", app.user.tier: "*", app.payment.provider: "*"}
-    count: 20
-  - id: q4-failure
-    type: span
-    title: "Q4: failed orders have an error `checkout` span with the exception"
-    where: {name: checkout, status: error, exception: true}
-    count: 3
-  - id: q4-log
-    type: log
-    title: "Q4: each failure writes one correlated log record with `app.order.id`"
-    attributes: {app.order.id: "~^o-2\\d{3}$"}
-    correlated: true
-    count: 3
-  - id: structured
-    type: log
-    title: Order ids are attributes, not baked into messages
-    body: "~o-\\d+"
-    count: {max: 0}
-  - id: budget
-    type: budget
-    title: "Within budget: 40 spans, 12 series, 4 log records"
-    spans: {max: 40}
-    series: {max: 12}
-    logs: {max: 4}
-    hint: Count the series each metric's attributes multiply out to, and check that no log line repeats what a span says.
-hints:
-  - "Start with Q4: wrap `place_order` in `tracer.start_as_current_span(\"checkout\")` and set the order id, tier and provider on it."
-  - "Q1 and Q2 are one counter: `orders.add(1, {\"outcome\": outcome, \"app.payment.provider\": provider})`. Add it on both paths."
-  - "Q3: time the whole function with `time.perf_counter()` and `duration.record(seconds, {\"app.user.tier\": tier})`. Create it with `meter.create_histogram(\"checkout.duration\", unit=\"s\")`."
-  - "In the `except` block: record the exception and error status on the span, then `log.warning(\"payment failed\", extra={\"app.order.id\": ..., \"app.payment.provider\": ...})` inside the span."
+- id: q1-q2-metric
+  type: metric
+  title: 'Q1, Q2: an `orders` counter by `outcome` and `app.payment.provider`'
+  name: orders
+  instrument: counter
+  attributes: [outcome, app.payment.provider]
+  attributes_absent: [app.order.id, app.user.id]
+  absent_hint: Ids give each order or user its own time series. They belong on the span.
+  attribute_values:
+    outcome: [ok, failed]
+  attribute_values_hint: Count failed checkouts too, or 'what share fail' can't be answered.
+- id: q3-metric
+  type: metric
+  title: 'Q3: a `checkout.duration` histogram in seconds, by `app.user.tier`'
+  name: checkout.duration
+  instrument: histogram
+  unit: s
+  attributes: [app.user.tier]
+  attributes_absent: [app.order.id, app.user.id]
+  max: {lte: 5}
+  max_hint: 'With unit `s`, record seconds: `time.perf_counter()` differences already are.'
+  mean_gap: {attribute: app.user.tier, high: gold, min: 0.03}
+  mean_gap_hint: 'Time the whole checkout, from start to finish: gold orders also wait for the loyalty discount, and Q3 is
+    about what the customer waits for.'
+- id: q4-span
+  type: span
+  title: 'Q4: one root `checkout` span per order with `app.order.id`, `app.user.tier` and `app.payment.provider`'
+  where:
+    name: checkout
+    parent: root
+    attributes: {app.order.id: '*', app.user.tier: '*', app.payment.provider: '*'}
+  count: 20
+- id: q4-failure
+  type: span
+  title: 'Q4: failed orders have an error `checkout` span with the exception'
+  where: {name: checkout, status: error, exception: true}
+  count: 3
+- id: q4-log
+  type: log
+  title: 'Q4: each failure writes one correlated log record with `app.order.id`'
+  attributes: {app.order.id: '~^o-2\d{3}$'}
+  correlated: true
+  count: 3
+- id: structured
+  type: log
+  title: Order ids are attributes, not baked into messages
+  body: ~o-\d+
+  count: {max: 0}
+- id: budget
+  type: budget
+  title: 'Within budget: 40 spans, 12 series, 4 log records'
+  spans: {max: 40}
+  series: {max: 12}
+  logs: {max: 4}
+  hint: Count the series each metric's attributes multiply out to, and check that no log line repeats what a span says.
+hints: ['Start with Q4: wrap `place_order` in `tracer.start_as_current_span("checkout")` and set the order id, tier and provider
+    on it.', 'Q1 and Q2 are one counter: `orders.add(1, {"outcome": outcome, "app.payment.provider": provider})`. Add it on
+    both paths.', 'Q3: time the whole function with `time.perf_counter()` and `duration.record(seconds, {"app.user.tier":
+    tier})`. Create it with `meter.create_histogram("checkout.duration", unit="s")`.', 'In the `except` block: record the
+    exception and error status on the span, then `log.warning("payment failed", extra={"app.order.id": ..., "app.payment.provider":
+    ...})` inside the span.']
 ---
 
 The starter is a checkout feature with no telemetry at all. Before it ships,

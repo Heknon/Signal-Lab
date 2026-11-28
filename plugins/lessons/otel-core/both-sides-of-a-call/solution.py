@@ -1,6 +1,7 @@
 import time
 
-from opentelemetry import propagate, trace
+from opentelemetry import context, propagate, trace
+from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -32,7 +33,13 @@ def fake_network(url: str, headers: dict) -> int:
     """Deliver a request. The price API is ours; fx.example is a third party."""
     time.sleep(0.005)
     if ".prices.example/" in url:
-        return price_api(url.split(".example", 1)[1], headers)
+        # A real server is another process: it doesn't share our in-process context,
+        # only what the request carries. So the API starts from an empty context.
+        token = context.attach(Context())
+        try:
+            return price_api(url.split(".example", 1)[1], headers)
+        finally:
+            context.detach(token)
     time.sleep(0.03)
     return 200
 

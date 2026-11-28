@@ -5,27 +5,23 @@ kind: code
 minutes: 7
 concepts: [exemplars, metric-to-trace correlation]
 assumes: [Histograms, Creating a span]
-runtime:
-  service: search-api
+runtime: {service: search-api}
 checks:
-  - id: hist
-    type: metric
-    title: "`search.duration` is a histogram in seconds"
-    name: search.duration
-    instrument: histogram
-    unit: s
-  - id: exemplars
-    type: metric
-    title: Its data points carry exemplars that point at traces
-    name: search.duration
-    exemplars: true
-  - id: spans
-    type: span
-    title: Each search is a `search` span
-    where: {name: search}
-    count: {min: 20}
-hints:
-  - "Record the measurement *while the span is active*: move `duration.record(...)` inside the `with` block."
+- id: hist
+  type: metric
+  title: '`search.duration` is a histogram in seconds'
+  name: search.duration
+  instrument: histogram
+  unit: s
+  max: {lte: 5}
+  max_hint: 'With unit `s`, record seconds: `time.perf_counter()` differences already are.'
+- {id: exemplars, type: metric, title: Its data points carry exemplars that point at traces, name: search.duration, exemplars: true}
+- id: spans
+  type: span
+  title: Each search is a `search` span
+  where: {name: search}
+  count: {min: 20}
+hints: ['Record the measurement *while the span is active*: move `duration.record(...)` inside the `with` block.']
 ---
 
 A histogram tells you p99 latency jumped at 14:02. It can't tell you *which*

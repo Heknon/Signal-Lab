@@ -6,36 +6,32 @@ filename: collector.yaml
 minutes: 10
 concepts: [tail_sampling, decision_wait, policies]
 assumes: [Sampling, Collector pipelines]
-runtime:
-  service: checkout
-  timeout: 30
-collector:
-  settle_s: 5
+runtime: {service: checkout, timeout: 30}
+collector: {settle_s: 5}
 checks:
-  - id: errors
-    type: span
-    title: All 10 failed checkouts are kept
-    where: {name: checkout, parent: root, status: error}
-    count: {min: 10}
-  - id: slow
-    type: span
-    title: All 10 slow checkouts (over 500 ms) are kept
-    where: {name: checkout, parent: root, min_duration_ms: 500}
-    count: {min: 10}
-  - id: sampled
-    type: span
-    title: Only a sample of the 80 fast, successful ones (20 to 40 traces in total)
-    where: {name: checkout, parent: root}
-    count: {min: 20, max: 40}
-  - id: whole
-    type: span
-    title: Kept traces are whole, with their `charge-card` child
-    where: {name: charge-card, parent: checkout}
-    count: {min: 20, max: 40}
-hints:
-  - "Policies are OR-ed: a trace is kept if any policy says so."
-  - "You need three policies: `type: status_code` (ERROR), `type: latency` (`threshold_ms: 500`) and `type: probabilistic` (`sampling_percentage: 10`)."
-  - "Set `decision_wait: 2s` so the processor waits for the whole trace before deciding."
+- id: errors
+  type: span
+  title: All 10 failed checkouts are kept
+  where: {name: checkout, parent: root, status: error}
+  count: {min: 10}
+- id: slow
+  type: span
+  title: All 10 slow checkouts (over 500 ms) are kept
+  where: {name: checkout, parent: root, min_duration_ms: 500}
+  count: {min: 10}
+- id: sampled
+  type: span
+  title: A sample of the 80 fast, successful ones is kept too (21 to 40 traces in total)
+  where: {name: checkout, parent: root}
+  count: {min: 21, max: 40}
+- id: whole
+  type: span
+  title: Kept traces are whole, with their `charge-card` child
+  where: {name: charge-card, parent: checkout}
+  count: {min: 21, max: 40}
+hints: ['Policies are OR-ed: a trace is kept if any policy says so.', 'You need three policies: `type: status_code` (ERROR),
+    `type: latency` (`threshold_ms: 500`) and `type: probabilistic` (`sampling_percentage: 10`).', 'Set `decision_wait: 2s`
+    so the processor waits for the whole trace before deciding.']
 ---
 
 Head sampling decides when a trace *starts*, before anyone knows how it

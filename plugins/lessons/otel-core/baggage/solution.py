@@ -18,8 +18,9 @@ def handle_request() -> None:
         print("downstream headers:", headers)
 
 
-token = context.attach(baggage.set_baggage("app.tenant.id", "acme"))
-try:
-    handle_request()
-finally:
-    context.detach(token)
+for tenant in ["acme", "globex"]:  # two requests, from two tenants
+    token = context.attach(baggage.set_baggage("app.tenant.id", tenant))
+    try:
+        handle_request()
+    finally:
+        context.detach(token)

@@ -21,7 +21,7 @@ checks:
     count: {min: 15, max: 70}
 hints:
   - "`TracerProvider(resource=..., sampler=ParentBased(TraceIdRatioBased(0.2)))`"
-  - "`ParentBased` makes child spans follow the root's decision instead of re-rolling the dice."
+  - "`ParentBased` makes child spans follow their parent's decision, whatever rule the parent used."
 ---
 
 At high traffic, keeping every trace is expensive and rarely useful. A
@@ -36,7 +36,11 @@ provider = TracerProvider(sampler=ParentBased(TraceIdRatioBased(0.2)))
 - **TraceIdRatioBased(0.2)** keeps about 20% of traces, decided from the
   trace id. Every service that sees the same trace id makes the *same* decision.
 - **ParentBased(...)** says: if there's a parent, do what it did. Use the
-  ratio only for root spans. Without it you'd get traces with holes.
+  ratio only for root spans. Without it, each service applies its own rule to
+  every span. A trace-id ratio still agrees with itself, but if the caller
+  kept a trace for its own reasons (it samples at 50%, or always keeps
+  checkout), a downstream service at 20% would drop its part, and the trace
+  arrives with holes.
 - The decision travels downstream in the `traceparent` flags (`…-01` = sampled).
 
 This is **head sampling**: decided up front, before anyone knows whether the

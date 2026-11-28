@@ -17,5 +17,6 @@ def handle_request() -> None:
         print("downstream headers:", headers)
 
 
-# TODO: put app.tenant.id=acme into baggage for the duration of the request
-handle_request()
+for tenant in ["acme", "globex"]:  # two requests, from two tenants
+    # TODO: put app.tenant.id=<tenant> into baggage for the duration of the request
+    handle_request()

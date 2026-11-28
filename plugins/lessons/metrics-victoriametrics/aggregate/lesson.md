@@ -10,27 +10,25 @@ query:
   language: metricsql
   range_s: 900
   examples:
-    - {label: Total shop traffic, query: "sum(rate(http_server_request_duration_seconds_count[5m]))"}
-    - {label: Checkouts by outcome, query: "sum by (outcome) (rate(shop_checkouts_total[5m]))"}
-    - {label: Two lowest-stock products, query: "bottomk(2, sum by (app_product_sku) (inventory_stock))"}
+  - {label: Total shop traffic, query: 'sum(rate(http_server_request_duration_seconds_count[5m]))'}
+  - {label: Checkouts by outcome, query: 'sum by (outcome) (rate(shop_checkouts_total[5m]))'}
+  - {label: Two lowest-stock products, query: 'bottomk(2, sum by (app_product_sku) (inventory_stock))'}
 checks:
-  - id: uses-sum-by
-    type: query
-    title: "Aggregate with `sum by (service_name)`"
-    must_include: ["sum", "service_name", "rate("]
-    expect: {rows: {min: 2}, columns: [service_name, value]}
-    success: One row per service.
-  - id: answer
-    type: query
-    title: Requests per second for each service
-    reference: 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
-    tolerance: 0.05
-    hint: "Rate first, then sum: `sum by (service_name) (rate(...[5m]))`. Don't filter anything out."
-    success: storefront and inventory get twice the traffic of checkout and payments. Can you see why from the routes?
-hints:
-  - "`sum by (label) (expr)` keeps only `label` and adds up everything else."
-  - "Always `rate` before you `sum`: summing raw counters from processes that restart at different times gives garbage."
-  - "Answer: `sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))`"
+- id: uses-sum-by
+  type: query
+  title: Aggregate with `sum by (service_name)`
+  must_include: [sum, service_name, rate(]
+  expect:
+    rows: {min: 2}
+    columns: [service_name, value]
+  success: One row per service.
+  mistakes:
+  - {pattern: status_code, message: 'Total traffic includes failed requests too: don''t filter on the status code.'}
+- {id: answer, type: query, title: Requests per second for each service, reference: 'sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))',
+  tolerance: 0.05, hint: 'Rate first, then sum: `sum by (service_name) (rate(...[5m]))`. Don''t filter anything out.', success: 'storefront
+    and inventory get twice the traffic of checkout and payments. Can you see why from the routes?'}
+hints: ['`sum by (label) (expr)` keeps only `label` and adds up everything else.', 'Always `rate` before you `sum`: summing
+    raw counters from processes that restart at different times gives garbage.', 'Answer: `sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))`']
 ---
 
 `rate(http_server_request_duration_seconds_count[5m])` returns a series for

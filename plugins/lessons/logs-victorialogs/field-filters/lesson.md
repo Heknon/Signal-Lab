@@ -10,26 +10,28 @@ query:
   language: logsql
   range_s: 900
   examples:
-    - {label: "One service", query: "_time:5m service.name:=payments"}
-    - {label: "WARN and above", query: "_time:15m severity_number:>=13"}
-    - {label: "Field names in use", query: "_time:5m | field_names"}
+  - {label: One service, query: '_time:5m service.name:=payments'}
+  - {label: WARN and above, query: '_time:15m severity_number:>=13'}
+  - {label: Field names in use, query: '_time:5m | field_names'}
 checks:
-  - id: shape
-    type: query
-    title: "Filter on the `service.name` and severity fields"
-    must_include: ["service.name", "severity"]
-    expect: {rows: {min: 1}, columns: [service.name, severity_text]}
-    success: Field filters, not text search.
-  - id: answer
-    type: query
-    title: "checkout's `ERROR` lines from the last 15 minutes"
-    reference: '_time:15m service.name:=checkout severity_text:=ERROR'
-    hint: "Combine `_time:15m`, `service.name:=checkout` and `severity_text:=ERROR`, with spaces between them."
-    success: "Each one is an order that failed after its payment was declined. The order id is in the message, not in a field, so searching for one means a word filter: `\"dc8d4704db\"`."
-hints:
-  - "`field:value` matches a word inside the field; `field:=value` matches the whole value exactly."
-  - "Severity is in `severity_text` (`INFO`, `WARN`, `ERROR`) and `severity_number` (9, 13, 17)."
-  - "Answer: `_time:15m service.name:=checkout severity_text:=ERROR`"
+- id: shape
+  type: query
+  title: Filter on the `service.name` and severity fields
+  must_include: [service.name, severity]
+  expect:
+    rows: {min: 1}
+    columns: [service.name, severity_text]
+  success: Field filters, not text search.
+  must_match:
+  - {pattern: 'severity_text\s*:=?\s*ERROR|severity_number\s*:\s*>=?\s*1[7-9]', message: 'Errors only: `severity_text:=ERROR`
+      (WARN is severity 13, ERROR 17).'}
+- {id: answer, type: query, title: checkout's `ERROR` lines from the last 15 minutes, reference: '_time:15m service.name:=checkout
+    severity_text:=ERROR', hint: 'Combine `_time:15m`, `service.name:=checkout` and `severity_text:=ERROR`, with spaces between
+    them.', success: 'Each one is an order that failed after its payment was declined. The order id is in the message, not
+    in a field, so searching for one means a word filter: `"dc8d4704db"`.'}
+hints: ['`field:value` matches a word inside the field; `field:=value` matches the whole value exactly.', 'Severity is in
+    `severity_text` (`INFO`, `WARN`, `ERROR`) and `severity_number` (9, 13, 17).', 'Answer: `_time:15m service.name:=checkout
+    severity_text:=ERROR`']
 ---
 
 VictoriaLogs stores each OTLP log record as a set of **fields**: the

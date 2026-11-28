@@ -5,26 +5,22 @@ kind: code
 minutes: 5
 concepts: [log correlation, trace_id, span_id]
 assumes: [Structured logs, Creating a span]
-runtime:
-  service: refund-service
+runtime: {service: refund-service}
 checks:
-  - id: correlated
-    type: log
-    title: Every log record carries a trace id and span id
-    correlated: true
-    count: {min: 3}
-  - id: all
-    type: log
-    title: No log record is left without trace context
-    correlated: false
-    count: {max: 0}
-  - id: error-linked
-    type: log
-    title: The failure is logged at ERROR inside the failing span
-    severity: ERROR
-    correlated: true
-hints:
-  - "Move the `log.info`/`log.error` calls inside the `with tracer.start_as_current_span(...)` block."
+- id: correlated
+  type: log
+  title: Every log record carries a trace id and span id
+  correlated: true
+  count: {min: 3}
+  in_span: refund
+- id: all
+  type: log
+  title: No log record is left without trace context
+  correlated: false
+  count: {max: 0}
+- {id: error-linked, type: log, title: The failure is logged at ERROR inside the failing span, severity: ERROR, correlated: true,
+  in_span: refund}
+hints: [Move the `log.info`/`log.error` calls inside the `with tracer.start_as_current_span(...)` block.]
 ---
 
 When a log record is emitted while a span is **active**, the SDK stamps it

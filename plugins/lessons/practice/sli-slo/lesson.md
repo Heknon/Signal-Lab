@@ -5,32 +5,36 @@ kind: query
 minutes: 10
 concepts: [SLI, SLO, availability, latency SLI, histogram buckets, good events / valid events]
 assumes: [rate() on counters, Histogram buckets and le, Error ratios]
-tools: ["victoriametrics:explore"]
+tools: ['victoriametrics:explore']
 query:
   backend: victoriametrics
   language: metricsql
   range_s: 3600
   examples:
-    - {label: "Availability SLI (storefront)", query: "sum(rate(http_server_request_duration_seconds_count{service_name=\"storefront\", http_response_status_code!~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"storefront\"}[5m]))"}
-    - {label: "Storefront buckets", query: "sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"storefront\"}[5m]))"}
-    - {label: "p95, for comparison", query: "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"storefront\"}[5m])))"}
+  - {label: Availability SLI (storefront), query: 'sum(rate(http_server_request_duration_seconds_count{service_name="storefront",
+      http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))'}
+  - {label: Storefront buckets, query: 'sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="storefront"}[5m]))'}
+  - {label: 'p95, for comparison', query: 'histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="storefront"}[5m])))'}
 checks:
-  - id: shape
-    type: query
-    title: "Divide the rate of the `le=\"0.25\"` bucket by the rate of all requests"
-    must_include: ["le=\"0.25\"", "_bucket", "_count", "rate(", "/"]
-    expect: {rows: 1}
-  - id: answer
-    type: query
-    title: "Latency SLI: share of storefront requests faster than 250 ms"
-    reference: 'sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront", le="0.25"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))'
-    tolerance: 0.02
-    hint: "Select the single bucket with `le=\"0.25\"` in the numerator, and sum over all routes on both sides so you get one number."
-    success: "A number between 0 and 1: the fraction of requests that were fast enough. Compare it with an SLO of 0.95."
-hints:
-  - "Buckets are cumulative: `le=\"0.25\"` already counts every request that took 250 ms or less."
-  - "Both sides need `sum(...)` with no `by`, so the result is one series."
-  - "Answer: `sum(rate(http_server_request_duration_seconds_bucket{service_name=\"storefront\", le=\"0.25\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"storefront\"}[5m]))`"
+- id: shape
+  type: query
+  title: Divide the rate of the `le="0.25"` bucket by the rate of all requests
+  must_include: [le="0.25", _bucket, rate(, /]
+  expect: {rows: 1}
+  must_match:
+  - {pattern: _count|le\s*=\s*"\+Inf", message: 'Divide by all requests: the `_count` series (or the `le="+Inf"` bucket).'}
+  - {pattern: service_name\s*=\s*"storefront", message: 'The SLO is for storefront: filter both sides on `service_name="storefront"`.'}
+  mistakes:
+  - {pattern: '_bucket\{[^}]*status_code', message: 'Every request counts toward the SLI denominator and numerator alike:
+      don''t drop failed ones from the fast-request count.'}
+- {id: answer, type: query, title: 'Latency SLI: share of storefront requests faster than 250 ms', reference: 'sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront",
+    le="0.25"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))', tolerance: 0.02,
+  hint: 'Select the single bucket with `le="0.25"` in the numerator, and sum over all routes on both sides so you get one
+    number.', success: 'A number between 0 and 1: the fraction of requests that were fast enough. Compare it with an SLO of
+    0.95.'}
+hints: ['Buckets are cumulative: `le="0.25"` already counts every request that took 250 ms or less.', 'Both sides need `sum(...)`
+    with no `by`, so the result is one series.', 'Answer: `sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront",
+    le="0.25"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="storefront"}[5m]))`']
 ---
 
 A dashboard full of graphs doesn't tell you whether the service is doing

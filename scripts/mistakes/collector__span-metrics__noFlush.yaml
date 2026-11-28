@@ -1,0 +1,20 @@
+processors:
+  batch:
+    timeout: 200ms
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s]
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/lab, spanmetrics]
+    metrics/red:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [otlphttp/lab]
