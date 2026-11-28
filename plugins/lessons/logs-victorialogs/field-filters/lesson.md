@@ -25,6 +25,7 @@ checks:
   must_match:
   - {pattern: 'severity_text\s*:=?\s*ERROR|severity_number\s*:\s*>=?\s*1[7-9]', message: 'Errors only: `severity_text:=ERROR`
       (WARN is severity 13, ERROR 17).'}
+  - {pattern: '_time:\s*(15m|900s)\b', message: 'The question asks about the last 15 minutes: start with `_time:15m`.'}
 - {id: answer, type: query, title: checkout's `ERROR` lines from the last 15 minutes, reference: '_time:15m service.name:=checkout
     severity_text:=ERROR', hint: 'Combine `_time:15m`, `service.name:=checkout` and `severity_text:=ERROR`, with spaces between
     them.', success: 'Each one is an order that failed after its payment was declined. The order id is in the message, not

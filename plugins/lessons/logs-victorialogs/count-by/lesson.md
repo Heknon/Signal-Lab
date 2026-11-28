@@ -25,6 +25,8 @@ checks:
   mistakes:
   - {pattern: count_uniq, message: 'Count log lines with `count()`. `count_uniq(trace_id)` counts requests, which only matches
       while each one logs once.'}
+  must_match:
+  - {pattern: '_time:\s*(15m|900s)\b', message: 'The question asks about the last 15 minutes: start with `_time:15m`.'}
 - id: answer
   type: query
   title: WARN and ERROR lines per service, last 15 minutes

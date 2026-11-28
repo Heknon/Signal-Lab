@@ -228,10 +228,14 @@ checks:
     must_include: [histogram_quantile]          # substrings the learner's query must contain
     must_match:                                 # required shapes that can be written several ways
       - {pattern: '\b(rate|increase)\(', message: Use a rate over a recent window.}
+    # When the question names a window ("last 15 minutes"), require it here: a
+    # value comparison can't catch a longer window while the data is younger than it.
     mistakes:                                   # known wrong approaches that can land within tolerance
       - {pattern: 'status_code=~"2', message: Divide by all requests, not only successful ones.}
     reference: >-                               # evaluated at the same instant; results compared
       histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
+    alternatives:                               # equivalent forms the backend computes a little differently
+      - histogram_quantile(0.95, sum by (le, service_name) (increase(http_server_request_duration_seconds_bucket[5m])))
     tolerance: 0.02                             # relative tolerance for values
     value_columns: [count]                      # non-"value" numeric columns (ES|QL)
     ignore_columns: []

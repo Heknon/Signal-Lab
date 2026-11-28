@@ -10,26 +10,26 @@ query:
   language: logsql
   range_s: 900
   examples:
-    - {label: Everything from the last minute, query: "_time:1m"}
-    - {label: One word, query: "_time:5m declined"}
-    - {label: Not the HTTP client chatter, query: "_time:5m -\"HTTP Request\""}
+  - {label: Everything from the last minute, query: '_time:1m'}
+  - {label: One word, query: '_time:5m declined'}
+  - {label: Not the HTTP client chatter, query: '_time:5m -"HTTP Request"'}
 checks:
-  - id: shape
-    type: query
-    title: "Filter on `_time` and the words `payment declined`"
-    must_include: ["_time:", "declined"]
-    expect: {rows: {min: 1}, columns: [_time, _msg]}
-    success: Each row is a whole log entry, newest first.
-  - id: answer
-    type: query
-    title: "Every `payment declined` line from the last 10 minutes"
-    reference: '_time:10m "payment declined"'
-    hint: "Put the phrase in double quotes and add `_time:10m`. Return whole log entries: no pipes."
-    success: "About 2% of payments are declined, so there are a handful. Each line has the order id in its message."
-hints:
-  - "Filters separated by a space must all match: `_time:5m error` means \"in the last 5 minutes AND contains the word error\"."
-  - "A phrase in double quotes matches those words next to each other, in that order."
-  - "Answer: `_time:10m \"payment declined\"`"
+- id: shape
+  type: query
+  title: Filter on `_time` and the words `payment declined`
+  must_include: ['_time:', declined]
+  expect:
+    rows: {min: 1}
+    columns: [_time, _msg]
+  success: Each row is a whole log entry, newest first.
+  must_match:
+  - {pattern: '_time:\s*(10m|600s)\b', message: 'The question asks about the last 10 minutes: use `_time:10m`.'}
+- {id: answer, type: query, title: Every `payment declined` line from the last 10 minutes, reference: '_time:10m "payment
+    declined"', hint: 'Put the phrase in double quotes and add `_time:10m`. Return whole log entries: no pipes.', success: 'About
+    2% of payments are declined, so there are a handful. Each line has the order id in its message.'}
+hints: ['Filters separated by a space must all match: `_time:5m error` means "in the last 5 minutes AND contains the word
+    error".', 'A phrase in double quotes matches those words next to each other, in that order.', 'Answer: `_time:10m "payment
+    declined"`']
 ---
 
 A LogsQL query is a list of **filters**. A log entry is returned when it
