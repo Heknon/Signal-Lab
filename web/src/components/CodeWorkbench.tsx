@@ -127,7 +127,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
   const editor = (
     <div className="stack" style={{ height: "100%" }}>
       <div className="wb-bar">
-        <button className={`file-tab ${file === "main" ? "active" : ""}`} onClick={() => setFile("main")}><FileCode2 />{lesson.starter?.filename ?? "main.py"}{modified && <span className="modified" title="Edited" />}</button>
+        <button className={`file-tab ${file === "main" ? "active" : ""}`} onClick={() => setFile("main")}><FileCode2 />{lesson.starter?.filename ?? "main.py"}{modified && <span className="edited" title="Changed from the starter. Saved automatically as you type, also across reloads. Reset restores the starter.">edited</span>}</button>
         {lesson.traffic && <button className={`file-tab ${file === "traffic" ? "active" : ""}`} onClick={() => setFile("traffic")} title="Sent through your Collector on each run (read-only)">{lesson.traffic.filename}<span className="subtle">read-only</span></button>}
         <span className="spacer" />
         {status}
@@ -139,7 +139,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
       <div className="grow" style={{ minHeight: 0 }}>
         {file === "traffic" && lesson.traffic
           ? <Editor key="traffic" value={lesson.traffic.content} language="python" readOnly />
-          : <Editor key="main" value={code} onChange={onEdit} language={language} onRun={execute} intellisense={!!meta?.intellisense} />}
+          : <Editor key="main" value={code} onChange={onEdit} language={language} onRun={execute} onSave={() => void drafts.flush(lesson.id)} intellisense={!!meta?.intellisense} />}
       </div>
     </div>
   );

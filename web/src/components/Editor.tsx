@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView, tooltips, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, placeholder as placeholderExt } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { classHighlighter } from "@lezer/highlight";
@@ -55,6 +55,9 @@ interface Props {
   onChange?: (v: string) => void;
   language: EditorLanguage;
   onRun?: () => void;
+  /** Ctrl/Cmd+S out of habit: edits autosave anyway, so this just syncs now and
+   *  keeps the browser's "save page" dialog away. */
+  onSave?: () => void;
   readOnly?: boolean;
   compact?: boolean;
   placeholder?: string;
@@ -81,16 +84,17 @@ function languageExtension(lang: EditorLanguage, promqlUrl?: string): Extension 
   }
 }
 
-export default function Editor({ value, onChange, language, onRun, readOnly, compact, placeholder, promqlUrl, autoFocus, intellisense }: Props) {
+export default function Editor({ value, onChange, language, onRun, onSave, readOnly, compact, placeholder, promqlUrl, autoFocus, intellisense }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const handlers = useRef({ onChange, onRun });
-  handlers.current = { onChange, onRun };
+  const handlers = useRef({ onChange, onRun, onSave });
+  handlers.current = { onChange, onRun, onSave };
 
   useEffect(() => {
     if (!host.current) return;
     const runKey = keymap.of([
       { key: "Mod-Enter", preventDefault: true, run: () => { handlers.current.onRun?.(); return true; } },
+      { key: "Mod-s", preventDefault: true, run: () => { handlers.current.onSave?.(); return true; } },
       { key: "Shift-Enter", preventDefault: true, run: () => { if (!compact) return false; handlers.current.onRun?.(); return true; } },
     ]);
     const intel = !!intellisense && language === "python";
@@ -112,6 +116,10 @@ export default function Editor({ value, onChange, language, onRun, readOnly, com
       syntaxHighlighting(classHighlighter),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
       languageExtension(language, promqlUrl),
+      // CodeMirror's default indent unit is 2 spaces; Python (PEP 8, and every
+      // starter here) uses 4, so Enter and Tab must too. YAML keeps 2.
+      indentUnit.of(language === "python" ? "    " : "  "),
+      EditorState.tabSize.of(language === "python" ? 4 : 2),
       theme,
       EditorView.updateListener.of((u) => { if (u.docChanged) handlers.current.onChange?.(u.state.doc.toString()); }),
       EditorState.readOnly.of(!!readOnly),
