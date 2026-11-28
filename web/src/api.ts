@@ -33,6 +33,7 @@ export interface Meta {
   collector: boolean;
   plugin_errors: string[];
   capabilities: Capability[];
+  intellisense?: boolean;
 }
 
 export interface ComponentHealth { ok: boolean; detail: string; mode?: string }

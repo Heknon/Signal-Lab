@@ -139,7 +139,7 @@ export default function CodeWorkbench({ lesson, onChecks }: { lesson: Lesson; on
       <div className="grow" style={{ minHeight: 0 }}>
         {file === "traffic" && lesson.traffic
           ? <Editor key="traffic" value={lesson.traffic.content} language="python" readOnly />
-          : <Editor key="main" value={code} onChange={onEdit} language={language} onRun={execute} />}
+          : <Editor key="main" value={code} onChange={onEdit} language={language} onRun={execute} intellisense={!!meta?.intellisense} />}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, placeholder as placeholderExt } from "@codemirror/view";
+import { EditorView, tooltips, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, placeholder as placeholderExt } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
@@ -10,6 +10,7 @@ import { python } from "@codemirror/lang-python";
 import { yaml } from "@codemirror/lang-yaml";
 import { LanguageType, PromQLExtension } from "@prometheus-io/codemirror-promql";
 import { esqlLanguage } from "../lib/languages";
+import { pythonCompletions, pythonIntelligence } from "../lib/pythonIntel";
 
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "13px", backgroundColor: "var(--bg-sunken)", color: "var(--text)" },
@@ -27,11 +28,19 @@ const theme = EditorView.theme({
   ".cm-matchingBracket": { backgroundColor: "var(--surface-3)", outline: "1px solid var(--border-strong)" },
   ".cm-selectionMatch": { backgroundColor: "color-mix(in srgb, var(--info) 14%, transparent)" },
   ".cm-placeholder": { color: "var(--text-3)" },
-  ".cm-tooltip": { backgroundColor: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "8px", boxShadow: "var(--shadow-pop)", overflow: "hidden" },
-  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "12px", maxHeight: "260px" },
+  // No overflow clipping on tooltips themselves: the completion docs panel is a child
+  // of the completion list, drawn beside it, and would be clipped away.
+  ".cm-tooltip": { backgroundColor: "var(--surface)", border: "1px solid var(--border-strong)", borderRadius: "8px", boxShadow: "var(--shadow-pop)" },
+  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "12px", maxHeight: "260px", borderRadius: "7px" },
   ".cm-tooltip-autocomplete > ul > li": { padding: "3px 10px !important" },
   ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--surface-3)", color: "var(--text)" },
   ".cm-completionDetail": { color: "var(--text-3)", fontStyle: "normal", marginLeft: "10px" },
+  ".cm-tooltip.cm-completionInfo": { maxWidth: "440px" },
+  ".sl-doc": { padding: "8px 11px", maxWidth: "460px", fontSize: "12px", lineHeight: "1.5" },
+  ".sl-doc-title": { fontFamily: "var(--font-mono)", color: "var(--text)", whiteSpace: "pre-wrap", wordBreak: "break-word" },
+  ".sl-doc-where": { fontFamily: "var(--font-mono)", color: "var(--text-3)", fontSize: "11px", marginTop: "2px" },
+  ".sl-doc-body": { color: "var(--text-2)", whiteSpace: "pre-wrap", marginTop: "6px", maxHeight: "220px", overflow: "auto", fontFamily: "var(--font-sans)" },
+  ".sl-sig-active": { color: "var(--accent)", fontWeight: "600", textDecoration: "underline", textUnderlineOffset: "3px" },
   ".cm-panels": { backgroundColor: "var(--surface)", color: "var(--text)" },
   ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },
   ".cm-searchMatch": { backgroundColor: "var(--warn-soft)" },
@@ -51,6 +60,8 @@ interface Props {
   placeholder?: string;
   promqlUrl?: string;
   autoFocus?: boolean;
+  /** Python only: completions, signature help and hover docs from the lab server. */
+  intellisense?: boolean;
 }
 
 function languageExtension(lang: EditorLanguage, promqlUrl?: string): Extension {
@@ -70,7 +81,7 @@ function languageExtension(lang: EditorLanguage, promqlUrl?: string): Extension 
   }
 }
 
-export default function Editor({ value, onChange, language, onRun, readOnly, compact, placeholder, promqlUrl, autoFocus }: Props) {
+export default function Editor({ value, onChange, language, onRun, readOnly, compact, placeholder, promqlUrl, autoFocus, intellisense }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const handlers = useRef({ onChange, onRun });
@@ -82,6 +93,7 @@ export default function Editor({ value, onChange, language, onRun, readOnly, com
       { key: "Mod-Enter", preventDefault: true, run: () => { handlers.current.onRun?.(); return true; } },
       { key: "Shift-Enter", preventDefault: true, run: () => { if (!compact) return false; handlers.current.onRun?.(); return true; } },
     ]);
+    const intel = !!intellisense && language === "python";
     const extensions: Extension[] = [
       runKey,
       history(),
@@ -89,7 +101,13 @@ export default function Editor({ value, onChange, language, onRun, readOnly, com
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      autocompletion({ icons: false }),
+      // Python with intellisense: the server's completions replace the language's
+      // own (local names and keywords), which Jedi also covers, so nothing is listed twice.
+      intel ? autocompletion({ icons: false, override: [pythonCompletions], activateOnTypingDelay: 60 }) : autocompletion({ icons: false }),
+      ...(intel ? pythonIntelligence(!readOnly) : []),
+      // Tooltips (completion docs, hover, signatures) live at page level so the
+      // panes' overflow clipping can't hide them; the theme classes come along.
+      tooltips({ parent: document.body }),
       highlightSelectionMatches(),
       syntaxHighlighting(classHighlighter),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
@@ -108,7 +126,7 @@ export default function Editor({ value, onChange, language, onRun, readOnly, com
     return () => { v.destroy(); view.current = null; };
     // Recreate only when the language or mode changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, readOnly, compact, promqlUrl]);
+  }, [language, readOnly, compact, promqlUrl, intellisense]);
 
   // Keep external value changes (reset, reveal solution) in sync.
   useEffect(() => {

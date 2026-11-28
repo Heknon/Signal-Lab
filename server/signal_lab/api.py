@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, auth, checks, otlp, runner
+from . import __version__, auth, checks, intellisense, otlp, runner
 from .config import Settings
 from .db import create_db
 from .drills import Drills, scalar
@@ -30,6 +30,11 @@ log = logging.getLogger("signal_lab")
 class RunRequest(BaseModel):
     lesson: str
     code: str
+
+
+class CodeAtRequest(BaseModel):
+    code: str
+    offset: int
 
 
 class QueryRequest(BaseModel):
@@ -262,6 +267,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await finish_with_checks(run, lesson)
 
     # ------------------------------------------------------------ meta
+    # ------------------------------------------------------------ editor intelligence
+    @app.post("/api/code/complete")
+    async def code_complete(req: CodeAtRequest) -> dict:
+        return await intellisense.complete(req.code, req.offset)
+
+    @app.post("/api/code/signature")
+    async def code_signature(req: CodeAtRequest) -> dict:
+        return {"signature": await intellisense.signatures(req.code, req.offset)}
+
+    @app.post("/api/code/hover")
+    async def code_hover(req: CodeAtRequest) -> dict:
+        return {"hover": await intellisense.hover(req.code, req.offset)}
+
+    @app.on_event("startup")
+    async def _warm_intellisense() -> None:
+        asyncio.create_task(intellisense.warm_up())
+
     @app.get("/api/meta")
     async def meta() -> dict:
         scenario = registry.scenario()
@@ -275,6 +297,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "collector": bool(settings.collector_health_url or settings.collector_configs),
             "plugin_errors": registry.errors,
             "capabilities": sorted(registry.capabilities()),
+            "intellisense": intellisense.available(),
         }
 
     @app.get("/api/health")
