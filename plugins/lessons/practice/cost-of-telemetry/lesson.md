@@ -47,7 +47,7 @@ quiz:
       explanation: "200 × 400 B = 80 KB/s, × 86,400 = 6.9 GB/day, × 30 ≈ 207 GB, and it says nothing the request span and the HTTP metrics don't. Per-request INFO logs are usually the easiest saving in a telemetry bill."
       hint: "Bytes per second, then per day, then × 30."
     - id: sampling-metrics
-      prompt: "You turn on 10% head sampling for traces. Which of these still gives you an exact request count?"
+      prompt: "You turn on 10% head sampling for traces. Which of these still gives you an unsampled request rate?"
       options:
         - {id: spans, label: "Counting server spans in the trace backend"}
         - {id: spans10, label: "Counting server spans and multiplying by 10"}

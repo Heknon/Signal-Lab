@@ -10,8 +10,9 @@ quiz:
     - id: mapping
       prompt: "Google's SRE book lists four golden signals: latency, traffic, errors and saturation. Which RED letter has no counterpart among them?"
       options:
-        - {id: none, label: "None: RED is the first three golden signals; saturation is the extra one, from USE"}
+        - {id: none, label: "None of them"}
         - {id: rate, label: "Rate"}
+        - {id: errors, label: "Errors"}
         - {id: duration, label: "Duration"}
       answer: none
       explanation: "Traffic is Rate, Errors is Errors, Latency is Duration. The fourth, saturation, is the S of USE: how full the service's most constrained resource is. The golden signals are RED plus one look underneath."

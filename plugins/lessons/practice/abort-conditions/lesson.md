@@ -40,8 +40,8 @@ quiz:
     - id: errors
       prompt: Did the shop return errors during the fault?
       options:
-        - {id: no, label: "Barely: requests waited instead of failing"}
-        - {id: yes, label: "Yes, most requests failed"}
+        - {id: "no", label: "Barely: requests waited instead of failing"}
+        - {id: "yes", label: "Yes, most requests failed"}
       answer: "no"
       explanation: Saturation shows up as latency first. Alerting on errors alone would have missed this.
 ---

@@ -70,6 +70,43 @@ def deep_merge(a: dict, b: dict) -> dict:
     return out
 
 
+_NUMBER_WORDS = {w: n for n, w in enumerate("zero one two three four five six seven eight nine ten eleven twelve".split())}
+
+
+def _clean(text: str) -> str:
+    return " ".join(str(text).strip().strip("`'\"").replace("`", "").lower().split())
+
+
+def _first_number(text: str) -> float | None:
+    t = _clean(text)
+    m = re.search(r"-?(\d+(?:\.\d*)?|\.\d+)\s*(%?)", t)
+    if m:
+        v = float(m.group(1))
+        return v / 100 if m.group(2) else v
+    for word in re.findall(r"[a-z]+", t):
+        if word in _NUMBER_WORDS:
+            return float(_NUMBER_WORDS[word])
+    return None
+
+
+def free_text_matches(given: object, expected: object) -> bool:
+    """A typed answer: case, spacing, quotes and backticks don't matter. If the
+    expected answer is a number, any way of writing it counts: "503",
+    "HTTP 503", "four", ".4", "0.40", "40%" (for 0.4 or 40)."""
+    if isinstance(given, list):
+        given = " ".join(map(str, given))
+    if _clean(given) == _clean(expected):
+        return True
+    try:
+        want = float(str(expected).strip().rstrip("%"))
+    except ValueError:
+        return False
+    got = _first_number(str(given))
+    if got is None:
+        return False
+    return any(abs(g - want) <= 1e-9 * max(1.0, abs(want)) for g in (got, got * 100))
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     registry = Registry.load(settings.plugins_dir, settings.backends, settings.lesson_packs, settings.scenarios)
@@ -483,7 +520,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 out["checks"].append(await grade_query(c, b, req, res, at_ms))
         return out
 
-    async def grade_query(c: dict, b, req: QueryRequest, res, at_ms: int) -> dict:
+    async def grade_query(c: dict, b, req: QueryRequest, res, at_ms: int) -> dict:  # noqa: C901
         must = c.get("must_include", [])
         missing = [m for m in must if m.lower() not in req.query.lower()]
         if missing:
@@ -643,7 +680,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return {"correct": ok, "explanation": q.get("explanation", "That query shows it.") if ok else graded["detail"]}
             if q.get("id", f"q{i}") == req.question:
                 expected = q["answer"]
-                correct = sorted(map(str, expected)) == sorted(map(str, req.answer)) if isinstance(expected, list) else str(req.answer).strip().lower() == str(expected).strip().lower()
+                if isinstance(expected, list):
+                    correct = sorted(map(str, expected)) == sorted(map(str, req.answer if isinstance(req.answer, list) else [req.answer]))
+                else:
+                    accepted = [expected] + list(q.get("accept", []))
+                    correct = any(free_text_matches(req.answer, a) for a in accepted)
                 return {"correct": correct, "explanation": q.get("explanation", "") if correct else q.get("hint", "Not quite. Look again.")}
         raise HTTPException(404, "Unknown question")
 

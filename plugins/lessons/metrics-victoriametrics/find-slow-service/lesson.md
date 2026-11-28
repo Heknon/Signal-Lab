@@ -31,16 +31,15 @@ quiz:
         - {id: b4, label: "750 ms – 1 s"}
         - {id: b5, label: "1 s – 2.5 s"}
       answer: b4
-      explanation: "The fault adds 700 ms ± 30% to every request, so most requests land between 490 and 910 ms. The slowest 5% sit in the 750 ms – 1 s bucket."
+      explanation: "The fault adds 700 ms ± 30% to every request, and the database adds 25–55 ms, so most requests land between about 0.5 and 0.97 s. The slowest 5% sit in the 750 ms – 1 s bucket."
       hint: "Look at `histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"...\"}[2m])))` and compare it with the bucket list from the percentiles lesson."
     - id: routes
       prompt: Which of the culprit's routes are slow?
-      multiple: true
       options:
-        - {id: stock, label: "GET /stock"}
-        - {id: reserve, label: "POST /reserve"}
-        - {id: charge, label: "POST /charge"}
-      answer: [stock, reserve]
+        - {id: stock, label: "Only GET /stock"}
+        - {id: reserve, label: "Only POST /reserve"}
+        - {id: both, label: "Both of its routes"}
+      answer: both
       explanation: "Both inventory routes are slow, so it's the whole service (here: an injected delay before every request), not one slow query."
       hint: "Add `http_route` to the `by` clause of your p95 query."
     - id: checkout-why

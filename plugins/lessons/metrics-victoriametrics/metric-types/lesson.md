@@ -64,7 +64,7 @@ something is from its name, and the function you choose has to match:
 | Kind | Looks like | Query it with |
 | --- | --- | --- |
 | Counter | `shop_checkouts_total` | `rate()`, `increase()` |
-| Gauge, UpDownCounter | `inventory_stock`, `inventory_reserved` | the value itself, `avg_over_time()`, `max_over_time()` |
+| Gauge, UpDownCounter | `inventory_stock`, `db_client_connection_count` | the value itself, `avg_over_time()`, `max_over_time()` |
 | Histogram | `…_bucket`, `…_count`, `…_sum` | `histogram_quantile()` over `rate(…_bucket)`; `rate(…_count)` |
 
 Answer the questions below. Use **Grafana Explore** or **VMUI** (links

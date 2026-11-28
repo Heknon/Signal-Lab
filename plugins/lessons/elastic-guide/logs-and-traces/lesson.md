@@ -8,16 +8,6 @@ assumes: [Reading a trace waterfall]
 tools: ["elastic:discover", "elastic:apm"]
 quiz:
   questions:
-    - id: field
-      prompt: "Which field ties a log record to the trace it was written in?"
-      options:
-        - {id: trace, label: "trace.id"}
-        - {id: tx, label: "transaction.name"}
-        - {id: host, label: "host.name"}
-        - {id: label, label: "labels.order_id"}
-      answer: trace
-      explanation: "The OpenTelemetry logging handler stamps each record with the active trace and span ids. APM Server stores them as `trace.id` and `span.id`, the same fields the spans carry."
-      hint: Open any shop log document in Discover and look for an id that also appears on spans.
     - id: storefront-log
       prompt: "In `logs-apm*`, find an **error** log from **storefront**. What does it say?"
       options:
@@ -29,7 +19,7 @@ quiz:
       explanation: "storefront logs this whenever checkout returns an error. It tells you *that* checkout failed, not why."
       hint: "KQL: `service.name : \"storefront\" and log.level : (ERROR or error)`. Python writes the level in capitals; KQL on keyword fields is case-sensitive."
     - id: who-logged
-      prompt: "Filter Discover on that log's `trace.id`. Which services wrote a log line in the same trace?"
+      prompt: "Pick a storefront error whose trace also contains a `payment declined` line, and filter Discover on its `trace.id`. Which services wrote a log line in that trace?"
       multiple: true
       options:
         - {id: storefront, label: storefront}
@@ -55,8 +45,8 @@ hints:
 ---
 
 Logs are often where an investigation starts: someone pastes an error line
-into chat. On its own, a line like `checkout failed for user user-123: HTTP
-502` doesn't say much. Its **`trace.id`** gets you everything else.
+into chat. On its own, one service's error line rarely says much: it reports that
+something it called failed. Its **`trace.id`** gets you everything else.
 
 Every log the shop writes inside a request carries the ids of the active
 trace and span. That makes two jumps possible:

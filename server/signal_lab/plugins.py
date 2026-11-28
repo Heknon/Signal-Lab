@@ -219,6 +219,19 @@ class LessonPack:
         }
 
 
+def _normalise_quiz(meta: dict) -> None:
+    """YAML 1.1 reads unquoted yes/no/on/off as booleans: `{id: no}` becomes False,
+    and the browser's answer "no" never matches. Option ids and answers are text."""
+    def text(v: object) -> object:
+        return {True: "yes", False: "no"}.get(v, v) if isinstance(v, bool) else v
+    for q in (meta.get("quiz") or {}).get("questions", []):
+        for o in q.get("options") or []:
+            if isinstance(o, dict) and "id" in o:
+                o["id"] = str(text(o["id"]))
+        if "answer" in q:
+            q["answer"] = [str(text(a)) for a in q["answer"]] if isinstance(q["answer"], list) else text(q["answer"])
+
+
 def _read_lesson(pack_id: str, module: str, path: Path) -> Lesson | None:
     md = path / "lesson.md"
     if not md.exists():
@@ -227,6 +240,7 @@ def _read_lesson(pack_id: str, module: str, path: Path) -> Lesson | None:
     raw = md.read_text()
     match = FRONT_MATTER.match(raw)
     meta, body = (yaml.safe_load(match.group(1)) or {}, match.group(2)) if match else ({}, raw)
+    _normalise_quiz(meta)
     files: dict[str, dict] = {}
     for f in sorted(path.iterdir()):
         stem = f.stem
