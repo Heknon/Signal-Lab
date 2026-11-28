@@ -27,7 +27,7 @@ quiz:
         - {id: held, label: "Yes"}
         - {id: rejected, label: "No"}
         - {id: aborted, label: "Aborted"}
-      explanation: Each failed attempt costs another call. With 40% failing, the average order needs about 1.6 calls, and more when the slowdown adds errors.
+      explanation: Each failed attempt costs another call. With 40% failing, the average order needs about 1.6 calls (1 + 0.4 + 0.16 + 0.064), over the 1.5 limit.
     - id: success
       prompt: What happened to the storefront checkout success rate compared with the previous experiment?
       options:

@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 5
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       payments:
@@ -34,10 +36,10 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
-    prompt: Which service is the root cause, not just where the symptom shows?
+    prompt: Payments returns some errors, but that alone doesn't explain the surge. Which service's behaviour turns those errors into extra load?
     options:
     - id: storefront
       label: '`storefront`'
@@ -62,7 +64,7 @@ quiz:
     - id: leak
       label: Payments is leaking memory
     answer: retries
-    explanation: 'Requests per checkout went from 1 to almost 2. The extra load comes from inside: checkout''s retry policy amplifies payments'' own errors.'
+    explanation: 'Requests per checkout went from 1 to about 1.5 (1 + 0.35 + 0.35² + …). The extra load comes from inside: checkout''s retry policy amplifies payments'' own errors.'
   - id: evidence
     kind: query
     backend: victoriametrics
@@ -74,9 +76,20 @@ quiz:
     expect:
       value:
         gt: 1.3
+        lt: 1.9
     hint: Divide payments' request rate by checkout's request rate (route `/checkout`).
     placeholder: sum(rate(...payments...[5m])) / sum(rate(...checkout...[5m]))
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: \b(rate|increase|irate)\s*\(
+      message: These are counters; take their `rate()` over a short window first, or the result is a total since each process started.
+    mistakes:
+    - pattern: by\s*\(\s*service_name
+      message: 'That lists each service''s rate. The question asks for one number: payments calls divided by checkout requests.'
+    - pattern: service_name\s*=~\s*"[^"]*\|
+      message: The regex mixes payments and checkout in one sum. Divide payments' rate by checkout's.
+    - pattern: http_client
+      message: Checkout's client metric counts all its outbound calls, inventory included. Count requests payments receives.
 ---
 
 **#payments-oncall, 03:17**: *"Our request rate is way up and latency with it. Storefront says their traffic is normal. Are we under attack?"*

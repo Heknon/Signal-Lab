@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 6
-  - at: 60
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       storefront:
@@ -32,7 +34,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -74,6 +76,14 @@ quiz:
     hint: '`count(...)` over the metric name counts its series.'
     placeholder: count(shop_checkouts_total)
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: \bcount\s*\(\s*shop_checkouts_total\b
+      message: 'Count the series of `shop_checkouts_total` itself: `count(<metric>)`.'
+    mistakes:
+    - pattern: count_over_time
+      message: '`count_over_time` counts samples over time, not series.'
+    - pattern: __name__
+      message: That counts series across many metrics. The question is about `shop_checkouts_total` only.
 ---
 
 **#platform, 08:55**: *"Our metrics backend ingests way more series since yesterday's deploy, and Grafana is crawling. Which team did this?"*

@@ -1,6 +1,6 @@
 ---
 title: Blips every few minutes
-summary: Inventory throws a short burst of errors every couple of minutes, then recovers on its own.
+summary: Checkout sees a short burst of errors from inventory every couple of minutes, then it recovers on its own.
 kind: incident
 minutes: 15
 concepts:
@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 5
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       inventory:
@@ -32,7 +34,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -74,6 +76,14 @@ quiz:
     hint: '`max_over_time` of `process_memory_usage_bytes` for inventory.'
     placeholder: max_over_time(process_memory_usage_bytes{service_name="inventory"}[10m])
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: service_name\s*=\s*"inventory"
+      message: Filter to inventory (`service_name="inventory"`).
+    - pattern: \bmax_over_time\s*\(|\bmax\s*\(
+      message: The question asks for the highest value; use `max_over_time` over the window.
+    mistakes:
+    - pattern: \bsum\s*\(|sum_over_time|avg_over_time
+      message: That adds up or averages memory samples; the question asks for the peak.
 ---
 
 **#alerts**: *inventory error rate > 1%: firing… resolved… firing… resolved.* The pattern repeats every few minutes.

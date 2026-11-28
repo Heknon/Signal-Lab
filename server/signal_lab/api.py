@@ -654,10 +654,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except (TypeError, ValueError, IndexError):
                     return {"correct": False, "explanation": "Enter a time."}
                 off = picked - act.fault_started
-                tol = float(q.get("tolerance_s", 120))
+                tol = float(q.get("tolerance_s", 60))
                 if abs(off) <= tol:
                     return {"correct": True, "explanation": q.get("explanation", f"It started at {time.strftime('%H:%M:%S', time.localtime(act.fault_started))}.")}
-                return {"correct": False, "explanation": f"About {abs(off) / 60:.0f} min too {'late' if off > 0 else 'early'}. " + q.get("hint", "Look for where the line first leaves its usual band.")}
+                return {"correct": False, "explanation": f"Too {'late' if off > 0 else 'early'}. " + q.get("hint", "Look for where the line first leaves its usual band.")}
             if q.get("id", f"q{i}") == req.question and q.get("kind") == "outcome":
                 act = drills.last.get(lesson.id)
                 if not act or act.status == "running":

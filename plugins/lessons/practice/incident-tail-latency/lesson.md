@@ -18,7 +18,9 @@ incident:
   timeline:
   - at: 0
     load: 5
-  - at: 75
+  - at:
+      min: 150
+      max: 420
     fault: true
     set:
       inventory:
@@ -33,7 +35,7 @@ quiz:
   - id: start
     kind: time
     prompt: When did the problem start? (to the minute)
-    tolerance_s: 120
+    tolerance_s: 60
     hint: Look for where the line first leaves its usual band, and use a 1m rate window to see it sharply.
   - id: cause
     prompt: Which service is the root cause, not just where the symptom shows?
@@ -72,9 +74,18 @@ quiz:
     expect:
       top:
         http_route: /reserve
-    hint: Compute p99 per `http_route` for inventory, and keep `le` in the `sum by`.
+      value:
+        gt: 0.5
+    hint: Compute p99 per `http_route` for inventory over a short rate window, and keep `le` in the `sum by`.
     placeholder: histogram_quantile(0.99, sum by (le, http_route) (rate(...{service_name="inventory"}[5m])))
     explanation: That's the evidence. Put it in the incident write-up.
+    must_match:
+    - pattern: histogram_quantile\s*\(\s*0?\.9
+      message: A tail shows at p90 or above (0.9, 0.95, 0.99); the median hides it.
+    - pattern: \b(rate|increase|irate)\s*\(
+      message: These are counters; take their `rate()` over a short window first, or the result is a total since each process started.
+    - pattern: \[\s*(\d+s|[1-9]m)\s*\]
+      message: 'Use a rate window under 10m: a longer one averages the incident away (and with no window there is no rate).'
 ---
 
 **#support, 10:42**: *"Several customers say the checkout button spins for ages, then works. Not everyone. Can someone look?"* The on-call engineer checks the average latency panel: flat.
