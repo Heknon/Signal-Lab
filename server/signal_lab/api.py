@@ -138,7 +138,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def finish_with_checks(run: Run, lesson) -> None:
         lesson_checks = [c for c in lesson.checks() if c["type"] not in checks.DEFERRED]
         exit_seen = time.monotonic()
-        min_settle, max_settle = 1.2, float(lesson.meta.get("settle_s", 6))
+        # The SDK flushes on exit, so the run's own telemetry is in by now; the minimum
+        # only covers stragglers. Goals still failing keep waiting (quiet_s / max_settle).
+        min_settle, max_settle = 0.6, float(lesson.meta.get("settle_s", 6))
         # Late telemetry (the shop's half of a trace) arrives within ~2 s of the last
         # batch. Once nothing has arrived for QUIET_S, waiting longer only delays a
         # failing result the learner is about to fix.

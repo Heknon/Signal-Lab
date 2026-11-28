@@ -6,11 +6,15 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], intervalMs?: 
   const [loading, setLoading] = useState(true);
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  // Never stack polls: a slow endpoint must not pile up requests, because browsers
+  // allow only 6 connections per host and a queued request stalls navigation.
+  const inFlight = useRef<Promise<void> | null>(null);
   const reload = useCallback(() => {
-    return fnRef.current().then(
+    if (inFlight.current) return inFlight.current;
+    return (inFlight.current = fnRef.current().then(
       (d) => { setData(d); setError(undefined); },
       (e: Error) => setError(e),
-    ).finally(() => setLoading(false));
+    ).finally(() => { setLoading(false); inFlight.current = null; }));
   }, []);
   useEffect(() => {
     setLoading(true);

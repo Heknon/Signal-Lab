@@ -32,8 +32,13 @@ async function call<T>(path: string, method = "GET"): Promise<T> {
 export function useActivity(lessonId: string) {
   const [state, setState] = useState<{ current: ActivityState | null; last: ActivityState | null }>({ current: null, last: null });
   useEffect(() => {
-    let live = true;
-    const tick = () => call<{ current: ActivityState | null; last: ActivityState | null }>(`/api/activity?lesson=${encodeURIComponent(lessonId)}`).then((s) => live && setState(s)).catch(() => undefined);
+    let live = true, busy = false;
+    const tick = () => {
+      if (busy || document.visibilityState !== "visible") return;  // no stacked or background polls
+      busy = true;
+      call<{ current: ActivityState | null; last: ActivityState | null }>(`/api/activity?lesson=${encodeURIComponent(lessonId)}`)
+        .then((s) => live && setState(s)).catch(() => undefined).finally(() => { busy = false; });
+    };
     tick();
     const id = window.setInterval(tick, 2000);
     return () => { live = false; window.clearInterval(id); };

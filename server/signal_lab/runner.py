@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
+import socket
+import subprocess
 import sys
 import tempfile
+import threading
 import time
+import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -53,6 +58,129 @@ def _limits(memory_mb: int | None, cpu_s: int):
         os.setsid()
 
     return apply
+
+
+log = logging.getLogger(__name__)
+
+
+class WarmProcess:
+    """A run forked from the warm helper; quacks like asyncio.subprocess.Process."""
+
+    def __init__(self, pid: int, exit_future: asyncio.Future, stdout: asyncio.StreamReader, stderr: asyncio.StreamReader):
+        self.pid, self.stdout, self.stderr = pid, stdout, stderr
+        self._exit = exit_future
+        self.returncode: int | None = None
+        exit_future.add_done_callback(lambda f: setattr(self, "returncode", f.result()))
+
+    async def wait(self) -> int:
+        return await asyncio.shield(self._exit)
+
+
+class WarmStarter:
+    """Client for signal_lab.warm: a helper that has imported OpenTelemetry once and
+    forks a ready interpreter per run (~0.1 s instead of ~1.5 s). See warm.py."""
+
+    def __init__(self) -> None:
+        self.sock: socket.socket | None = None
+        self.proc: subprocess.Popen | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.pending: dict[str, dict[str, asyncio.Future]] = {}
+        self.lock: asyncio.Lock | None = None
+        self.disabled = os.getenv("SIGNAL_LAB_WARM_START", "1") == "0"
+
+    def _start(self) -> bool:
+        parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("OTEL_")}
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent) + os.pathsep + env.get("PYTHONPATH", "")
+        proc = subprocess.Popen([sys.executable, "-m", "signal_lab.warm", str(child.fileno())],
+                                pass_fds=(child.fileno(),), env=env)
+        child.close()
+        parent.settimeout(30)
+        try:
+            if json.loads(parent.recv(4096)).get("ready") is not True:
+                raise RuntimeError("bad hello")
+        except Exception as e:
+            log.warning("warm start unavailable, using cold starts: %s", e)
+            proc.kill()
+            return False
+        parent.settimeout(None)
+        self.sock, self.proc = parent, proc
+        threading.Thread(target=self._read, args=(parent,), daemon=True).start()
+        log.info("warm start ready (pid %s)", proc.pid)
+        return True
+
+    def _read(self, sock: socket.socket) -> None:
+        while True:
+            try:
+                msg = sock.recv(4096)
+            except OSError:
+                msg = b""
+            if not msg:
+                break
+            data = json.loads(msg)
+            futs = self.pending.get(data["id"])
+            if not futs or not self.loop:
+                continue
+            key = "pid" if "pid" in data else "exit"
+            self.loop.call_soon_threadsafe(lambda f=futs[key], v=data[key]: f.done() or f.set_result(v))
+            if key == "exit":
+                self.pending.pop(data["id"], None)
+        # helper died: fail whatever is still waiting, and start a new one next time
+        self.sock = None
+        for futs in list(self.pending.values()):
+            for f in futs.values():
+                if self.loop:
+                    self.loop.call_soon_threadsafe(lambda f=f: f.done() or f.set_result(-1))
+        self.pending.clear()
+
+    async def ensure(self) -> socket.socket | None:
+        """Start the helper if it isn't running (also called at runner start-up)."""
+        if self.disabled:
+            return None
+        self.loop = asyncio.get_running_loop()
+        self.lock = self.lock or asyncio.Lock()
+        async with self.lock:
+            if self.sock is None and not await asyncio.to_thread(self._start):
+                self.disabled = True
+            return self.sock
+
+    async def spawn(self, cwd: Path, env: dict[str, str], memory_mb: int | None, cpu_s: int) -> WarmProcess | None:
+        sock = await self.ensure()
+        if sock is None:
+            return None
+        rid = uuid.uuid4().hex
+        futs = {"pid": self.loop.create_future(), "exit": self.loop.create_future()}
+        self.pending[rid] = futs
+        out_r, out_w = os.pipe()
+        err_r, err_w = os.pipe()
+        try:
+            socket.send_fds(sock, [json.dumps({"id": rid, "cwd": str(cwd), "env": env, "auto": True,
+                                                "memory_mb": memory_mb, "cpu_s": cpu_s}).encode()], [out_w, err_w])
+        except OSError as e:
+            log.warning("warm start failed, using a cold start: %s", e)
+            self.pending.pop(rid, None)
+            self.sock = None
+            for fd in (out_r, out_w, err_r, err_w):
+                os.close(fd)
+            return None
+        finally:
+            for fd in (out_w, err_w):
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        pid = await asyncio.wait_for(futs["pid"], timeout=10)
+        return WarmProcess(pid, futs["exit"], await _fd_reader(out_r), await _fd_reader(err_r))
+
+
+async def _fd_reader(fd: int) -> asyncio.StreamReader:
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader()
+    await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), os.fdopen(fd, "rb", 0))
+    return reader
+
+
+warm = WarmStarter()
 
 
 COLLECTOR_BIN = os.getenv("SIGNAL_LAB_COLLECTOR_BIN", "otelcol-lab")
@@ -192,8 +320,17 @@ async def execute_local(
         else:
             yield {"type": "start", "command": ("opentelemetry-instrument python" if auto_instrument else "python") + " main.py"}
 
-        cmd = (_instrument_cmd() if auto_instrument else [sys.executable]) + ["main.py"]
-        program = await spawn(cmd, "stdout", "stderr", child_env)
+        program = None
+        if auto_instrument:
+            # Same as `opentelemetry-instrument python main.py`, forked from a warm interpreter.
+            program = await warm.spawn(workdir, child_env, memory_mb, int(timeout) + 15)
+            if program is not None:
+                procs.append(program)  # type: ignore[arg-type]
+                pumps.append(asyncio.create_task(pump(program.stdout, "stdout")))
+                pumps.append(asyncio.create_task(pump(program.stderr, "stderr")))
+        if program is None:
+            cmd = (_instrument_cmd() if auto_instrument else [sys.executable]) + ["main.py"]
+            program = await spawn(cmd, "stdout", "stderr", child_env)
         deadline = started + timeout
         timed_out = False
         while True:
@@ -285,9 +422,13 @@ def create_runner_app():
     max_timeout = float(os.getenv("SIGNAL_LAB_RUN_TIMEOUT", "30"))
     semaphore = asyncio.Semaphore(int(os.getenv("SIGNAL_LAB_RUNNER_CONCURRENCY", "4")))
 
+    @app.on_event("startup")
+    async def prewarm() -> None:
+        asyncio.create_task(warm.ensure())  # the first run shouldn't pay for the imports
+
     @app.get("/healthz")
     async def healthz() -> dict:
-        return {"ok": True}
+        return {"ok": True, "warm_start": warm.sock is not None}
 
     @app.post("/exec")
     async def exec_(req: ExecRequest):
