@@ -21,7 +21,20 @@ A check reads **observable behaviour** and returns `pass`, `fail` or
 5. **Pending, then final.** While results are still arriving, report
    `pending`. After a settle time, missing data becomes `fail` with "nothing
    arrived; did the program run?"
-6. **Count with ranges.** `count: {min: 1}`, `{max: 0}` (absence),
+6. **Check what the data does, not what the code declares.** A goal that
+   reads a declared unit or bucket list passes code that records milliseconds
+   under `unit="s"`. Check the recorded values, how they spread over buckets,
+   that each expected attribute value occurs, that a value changes or returns
+   to zero, that a log is in the *right* span. Type-check numbers: `"3"` is not 3.
+7. **Name the known mistakes.** Some wrong answers land within tolerance on
+   today's data (an error ratio over successes instead of all requests differs
+   by 1%). Match them explicitly and explain them, rather than loosening or
+   tightening a numeric tolerance.
+8. **Simulate the boundary you teach.** If a lesson is about carrying context
+   between processes, make the fake network or queue start the other side from
+   an empty context, or in-process context will make skipping the lesson's
+   point pass.
+9. **Count with ranges.** `count: {min: 1}`, `{max: 0}` (absence),
    `{min: 15, max: 70}` (for sampled or probabilistic outcomes, with margins
    that are safe for the seeded data).
 

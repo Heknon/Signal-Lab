@@ -111,7 +111,9 @@ seen, so write titles as goals: *"`checkout` carries `app.user.id`"*.
     links: {min: 3}               # number of span links
     exception: true               # an "exception" event was recorded
     min_duration_ms: 100
+    status: [unset, ok]           # status may be one value or a list of acceptable ones
   count: {min: 1, max: 3}         # default {min: 1}; an int means exactly
+  distinct: {server.address: {min: 3}}   # across matching spans, at least 3 different values
 ```
 
 #### `trace`
@@ -157,9 +159,23 @@ or `consumer` span handled it, or else to an external dependency named by
   series: {max: 6}                # number of time series (attribute combinations)
   series_hint: Shown when the series count is off.
   value: 6                        # sum of values (counters) or counts (histograms); or {gte: 6}
-  bounds: [0.01, 0.05, 0.1]       # explicit histogram bucket boundaries
+  value_hint: Shown when the total is off.
+  bounds: [0.01, 0.05, 0.1]       # exact bucket boundaries (prefer `spread`: it accepts any list that fits)
+  spread: {max_share: 0.5, max_overflow: 0.05, min_used: 4}   # buckets fit the recorded values
+  max: {lte: 5}                   # largest recorded value (histograms): catches ms under unit "s"
+  max_hint: Shown when it's out of range.
+  attribute_values: {outcome: [ok, failed]}   # each value occurs on some series
+  mean_gap: {attribute: app.user.tier, high: gold, min: 0.03}  # histogram mean for gold >= others + 0.03
+  changes: true                   # the value moved during the run (an observed gauge)
+  absent: true                    # this metric must not exist
   exemplars: true
 ```
+
+Numbers are strict: an expected number or bound like `{gte: 1}` never matches
+the string `"3"`, so goals catch attributes recorded with the wrong type.
+Prefer goals that check what the data *does* (values, spread, counts per
+value) over ones that check what the code *declares* (unit, bucket list):
+the first kind fails the mistakes learners actually make.
 
 #### `log`
 
@@ -170,7 +186,12 @@ or `consumer` span handled it, or else to an external dependency named by
   severity: ERROR
   attributes: {app.order.id: "*"}
   correlated: true                # has trace_id + span_id (false = has none)
+  in_span: refund                 # linked to a span with this name, not just to any span
   count: {min: 1}                 # {max: 0} to assert that nothing matches
+
+- type: log
+  forbid_pattern: '\d{13,16}'      # no record may match, in its body or any attribute value
+  forbid_hint: Card numbers must not leave the process.
 ```
 
 #### `budget`
@@ -205,6 +226,10 @@ checks:
   - type: query
     title: p95 latency per service
     must_include: [histogram_quantile]          # substrings the learner's query must contain
+    must_match:                                 # required shapes that can be written several ways
+      - {pattern: '\b(rate|increase)\(', message: Use a rate over a recent window.}
+    mistakes:                                   # known wrong approaches that can land within tolerance
+      - {pattern: 'status_code=~"2', message: Divide by all requests, not only successful ones.}
     reference: >-                               # evaluated at the same instant; results compared
       histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))
     tolerance: 0.02                             # relative tolerance for values

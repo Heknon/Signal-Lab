@@ -5,26 +5,26 @@ kind: code
 minutes: 6
 concepts: [semantic conventions, span kind, resource]
 assumes: [Span attributes]
-runtime:
-  service: price-fetcher
+runtime: {service: price-fetcher}
 checks:
-  - id: kind
-    type: span
-    title: "The outgoing call is a `client` span named `GET`"
-    where: {name: GET, kind: client}
-  - id: semconv
-    type: span
-    title: It uses the standard HTTP attribute names
-    where:
-      name: GET
-      attributes: {http.request.method: GET, url.full: "*", server.address: "*", http.response.status_code: 200}
-  - id: no-custom
-    type: span
-    title: No home-made duplicates (`method`, `url`, `status`)
-    where: {name: GET, attributes_absent: [method, url, status]}
-hints:
-  - "Pass `kind=SpanKind.CLIENT` to `start_as_current_span`."
-  - "The keys are `http.request.method`, `url.full`, `server.address` and `http.response.status_code`."
+- id: kind
+  type: span
+  title: The outgoing call is a `client` span named `GET`
+  where: {name: GET, kind: client}
+- id: semconv
+  type: span
+  title: It uses the standard HTTP attribute names
+  where:
+    name: GET
+    attributes: {http.request.method: GET, url.full: '*', server.address: api.prices.example, http.response.status_code: 200}
+- id: no-custom
+  type: span
+  title: No home-made duplicates (`method`, `url`, `status`)
+  where:
+    name: GET
+    attributes_absent: [method, url, status]
+hints: [Pass `kind=SpanKind.CLIENT` to `start_as_current_span`., 'The keys are `http.request.method`, `url.full`, `server.address`
+    and `http.response.status_code`.']
 ---
 
 You could call an attribute `method`, `http_method` or `verb`. If every team

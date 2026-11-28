@@ -10,26 +10,29 @@ query:
   language: metricsql
   range_s: 900
   examples:
-    - {label: Responses by status code, query: "sum by (service_name, http_response_status_code) (rate(http_server_request_duration_seconds_count[5m]))"}
-    - {label: Checkout failure ratio (business view), query: "sum(rate(shop_checkouts_total{outcome=\"failed\"}[5m])) / sum(rate(shop_checkouts_total[5m]))"}
+  - {label: Responses by status code, query: 'sum by (service_name, http_response_status_code) (rate(http_server_request_duration_seconds_count[5m]))'}
+  - {label: Checkout failure ratio (business view), query: 'sum(rate(shop_checkouts_total{outcome="failed"}[5m])) / sum(rate(shop_checkouts_total[5m]))'}
 checks:
-  - id: shape
-    type: query
-    title: Divide a 5xx rate by a total rate
-    must_include: ["/", "http_response_status_code", "rate("]
-    expect: {rows: {min: 1}, columns: [service_name, value]}
-    success: Ratio of two rates, matched by service.
-  - id: answer
-    type: query
-    title: 5xx error ratio for each service
-    reference: 'sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'
-    tolerance: 0.05
-    hint: "Count only 5xx in the numerator (`=~\"5..\"`), everything in the denominator, and use `sum by (service_name)` on both sides so the labels match."
-    success: "About 2% for checkout and half that for storefront, which also serves /api/products. payments isn't here at all: its card declines are 402s."
-hints:
-  - "Both sides need the same labels, or `/` finds nothing to divide. `sum by (service_name)` on each side does that."
-  - "Card declines are HTTP 402. That's a 4xx: the request was fine, the card wasn't. Don't count it."
-  - "Answer: `sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))`"
+- id: shape
+  type: query
+  title: Divide a 5xx rate by a total rate
+  must_include: [/, http_response_status_code, rate(]
+  expect:
+    rows: {min: 1}
+    columns: [service_name, value]
+  success: Ratio of two rates, matched by service.
+  mistakes:
+  - {pattern: 'status_code\s*=~?\s*"(2\.\.|[23]\d\d|\(2)', message: 'Divide the errors by all requests, not only the successful
+      ones: errors / (errors + successes) is the error ratio.'}
+- {id: answer, type: query, title: 5xx error ratio for each service, reference: 'sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+    / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))', tolerance: 0.05, hint: 'Count only 5xx
+    in the numerator (`=~"5.."`), everything in the denominator, and use `sum by (service_name)` on both sides so the labels
+    match.', success: 'About 2% for checkout and half that for storefront, which also serves /api/products. payments isn''t
+    here at all: its card declines are 402s.'}
+hints: ['Both sides need the same labels, or `/` finds nothing to divide. `sum by (service_name)` on each side does that.',
+  'Card declines are HTTP 402. That''s a 4xx: the request was fine, the card wasn''t. Don''t count it.', 'Answer: `sum by
+    (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name)
+    (rate(http_server_request_duration_seconds_count[5m]))`']
 ---
 
 An error *count* depends on traffic: 10 errors a minute is a disaster at 20

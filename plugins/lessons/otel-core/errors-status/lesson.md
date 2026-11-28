@@ -5,29 +5,26 @@ kind: code
 minutes: 6
 concepts: [span status, record_exception]
 assumes: [Creating a span]
-runtime:
-  service: payments-worker
+runtime: {service: payments-worker}
 checks:
-  - id: clean-exit
-    type: exit
-    title: The program handles the failure and exits cleanly
-  - id: failed
-    type: span
-    title: The declined charge is a `charge-card` span with status `error`
-    where: {name: charge-card, status: error}
-    count: 1
-  - id: exception
-    type: span
-    title: The exception is recorded on that span
-    where: {name: charge-card, status: error, exception: true}
-  - id: others
-    type: span
-    title: The two successful charges are not marked as errors
-    where: {name: charge-card, status: unset}
-    count: 2
-hints:
-  - "Inside the `except` block, call `span.record_exception(e)`."
-  - "Then `span.set_status(Status(StatusCode.ERROR, str(e)))`."
+- {id: clean-exit, type: exit, title: The program handles the failure and exits cleanly}
+- id: failed
+  type: span
+  title: The declined charge is a `charge-card` span with status `error`
+  where: {name: charge-card, status: error}
+  count: 1
+- id: exception
+  type: span
+  title: The exception is recorded on that span
+  where: {name: charge-card, status: error, exception: true}
+- id: others
+  type: span
+  title: The two successful charges are not marked as errors
+  where:
+    name: charge-card
+    status: [unset, ok]
+  count: 2
+hints: ['Inside the `except` block, call `span.record_exception(e)`.', 'Then `span.set_status(Status(StatusCode.ERROR, str(e)))`.']
 ---
 
 When an exception *escapes* a `start_as_current_span` block, the SDK records

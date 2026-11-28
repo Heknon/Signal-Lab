@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import json
 import logging
 import math
@@ -487,6 +488,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         missing = [m for m in must if m.lower() not in req.query.lower()]
         if missing:
             return checks.result(c, checks.FAIL, f"Your query should use {', '.join(f'`{m}`' for m in missing)}.")
+        # Required shapes that may be written several ways, e.g. rate( or increase(.
+        for need in c.get("must_match", []):
+            if not re.search(need["pattern"], req.query, re.I | re.S):
+                return checks.result(c, checks.FAIL, need["message"])
+        # Known wrong approaches that can land within tolerance of the right number
+        # on today's data (a 1% error ratio over successes vs over everything).
+        for mistake in c.get("mistakes", []):
+            if re.search(mistake["pattern"], req.query, re.I | re.S):
+                return checks.result(c, checks.FAIL, mistake["message"])
         expect = c.get("expect", {})
         if "rows" in expect:
             ok, need = checks._count_ok(len(res.rows), expect["rows"])
@@ -620,7 +630,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 res = await b.adapter.query(q.get("language", "metricsql"), learner_q, at_ms=at_ms, range_s=900)
                 if res is None or res.error:
                     return {"correct": False, "explanation": f"The query failed: {res.error if res else 'unsupported'}"}
-                check = {"id": q.get("id"), "type": "query", "title": q.get("prompt", "")} | {k: q[k] for k in ("reference", "must_include", "expect", "tolerance", "value_columns", "ignore_columns", "hint") if k in q}
+                check = {"id": q.get("id"), "type": "query", "title": q.get("prompt", "")} | {k: q[k] for k in ("reference", "must_include", "must_match", "mistakes", "expect", "tolerance", "value_columns", "ignore_columns", "hint") if k in q}
                 graded = await grade_query(check, b, QueryRequest(backend=b.id, language=q.get("language", "metricsql"), query=learner_q), res, at_ms)
                 ok = graded["status"] == checks.PASS
                 return {"correct": ok, "explanation": q.get("explanation", "That query shows it.") if ok else graded["detail"]}

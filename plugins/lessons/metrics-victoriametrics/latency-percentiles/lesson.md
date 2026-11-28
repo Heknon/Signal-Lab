@@ -10,27 +10,30 @@ query:
   language: metricsql
   range_s: 900
   examples:
-    - {label: Bucket rates for storefront, query: "sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"storefront\"}[5m]))"}
-    - {label: Median for the whole shop, query: "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))"}
-    - {label: Average (not a percentile), query: "sum by (service_name) (rate(http_server_request_duration_seconds_sum[5m])) / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))"}
+  - {label: Bucket rates for storefront, query: 'sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="storefront"}[5m]))'}
+  - {label: Median for the whole shop, query: 'histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))'}
+  - {label: Average (not a percentile), query: 'sum by (service_name) (rate(http_server_request_duration_seconds_sum[5m]))
+      / sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))'}
 checks:
-  - id: shape
-    type: query
-    title: "Use `histogram_quantile` over `rate(..._bucket)` and keep `le`"
-    must_include: ["histogram_quantile", "_bucket", "rate(", "le"]
-    expect: {rows: {min: 2}, columns: [service_name, value]}
-    success: Right shape.
-  - id: answer
-    type: query
-    title: p95 server latency for each service
-    reference: 'histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))'
-    tolerance: 0.05
-    hint: "Use 0.95, and aggregate the bucket rates with `sum by (le, service_name)` inside `histogram_quantile`."
-    success: That's p95 in seconds. 95% of requests to each service were faster than this.
-hints:
-  - "Percentiles are `0.0`-`1.0` here: p95 is `0.95`."
-  - "The `by` clause needs `le` *and* the label you want one line per: `by (le, service_name)`."
-  - "Answer: `histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))`"
+- id: shape
+  type: query
+  title: Use `histogram_quantile` over `rate(..._bucket)` and keep `le`
+  must_include: [histogram_quantile, _bucket, le]
+  expect:
+    rows: {min: 2}
+    columns: [service_name, value]
+  success: Right shape.
+  must_match:
+  - {pattern: \b(rate|increase)\(, message: 'Turn the cumulative buckets into a recent window with `rate(...[5m])` (or `increase`).'}
+  mistakes:
+  - {pattern: '(max|min|avg|sum|quantile)\s*(by\s*\([^)]*\)\s*)?\(\s*histogram_quantile', message: 'Aggregate the buckets
+      first (`sum by (le, …)`), then take `histogram_quantile`. Percentiles can''t be combined with max, avg or sum afterwards.'}
+- {id: answer, type: query, title: p95 server latency for each service, reference: 'histogram_quantile(0.95, sum by (le, service_name)
+    (rate(http_server_request_duration_seconds_bucket[5m])))', tolerance: 0.05, hint: 'Use 0.95, and aggregate the bucket
+    rates with `sum by (le, service_name)` inside `histogram_quantile`.', success: That's p95 in seconds. 95% of requests
+    to each service were faster than this.}
+hints: ['Percentiles are `0.0`-`1.0` here: p95 is `0.95`.', 'The `by` clause needs `le` *and* the label you want one line
+    per: `by (le, service_name)`.', 'Answer: `histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))`']
 ---
 
 A histogram doesn't store individual durations. It counts how many requests

@@ -1,42 +1,50 @@
 ---
 title: The RED method
-summary: "Rate, Errors and Duration for one service in one query: the three numbers that describe any request-driven service."
+summary: 'Rate, Errors and Duration for one service in one query: the three numbers that describe any request-driven service.'
 kind: query
 minutes: 10
 concepts: [RED method, request rate, error ratio, latency percentile, label_set, union]
 assumes: [rate() on counters, sum by, histogram_quantile, Error ratios]
-tools: ["victoriametrics:explore"]
+tools: ['victoriametrics:explore']
 query:
   backend: victoriametrics
   language: metricsql
   range_s: 900
   examples:
-    - {label: "Rate: requests per second", query: "sum(rate(http_server_request_duration_seconds_count{service_name=\"checkout\"}[5m]))"}
-    - {label: "Errors: 5xx share", query: "sum(rate(http_server_request_duration_seconds_count{service_name=\"checkout\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"checkout\"}[5m]))"}
-    - {label: "Duration: p95", query: "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"checkout\"}[5m])))"}
-    - {label: "RED per route", query: "sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name=\"checkout\"}[5m]))"}
+  - {label: 'Rate: requests per second', query: 'sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m]))'}
+  - {label: 'Errors: 5xx share', query: 'sum(rate(http_server_request_duration_seconds_count{service_name="checkout", http_response_status_code=~"5.."}[5m]))
+      / sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m]))'}
+  - {label: 'Duration: p95', query: 'histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m])))'}
+  - {label: RED per route, query: 'sum by (http_route) (rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m]))'}
 checks:
-  - id: shape
-    type: query
-    title: "Three rows, `rate`, `errors` and `duration_p95`, built from rates and a histogram"
-    must_include: ["rate(", "5..", "histogram_quantile", "_bucket"]
-    expect: {rows: {min: 2, max: 3}, columns: [signal, value]}
-  - id: answer
-    type: query
-    title: "RED for `checkout`: requests/s, 5xx ratio and p95 latency"
-    reference: >-
-      union(
-        label_set(sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])), "signal", "rate"),
-        label_set(sum(rate(http_server_request_duration_seconds_count{service_name="checkout", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])), "signal", "errors"),
-        label_set(histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m]))), "signal", "duration_p95")
-      )
-    tolerance: 0.05
-    hint: "Rate needs `rate(...[5m])`; errors are 5xx divided by all requests; duration is `histogram_quantile(0.95, ...)` over `_bucket`, not the average."
-    success: "That's checkout's RED: a few requests per second, a couple of percent failing, and a p95 under 100 ms."
-hints:
-  - "Rate: the raw `_count` is a counter since start-up. Wrap it in `rate(...[5m])`."
-  - "Errors: divide the 5xx rate by the rate of all requests, so it's a ratio between 0 and 1."
-  - "Duration: replace the average with `histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name=\"checkout\"}[5m])))`."
+- id: shape
+  type: query
+  title: Three rows, `rate`, `errors` and `duration_p95`, built from rates and a histogram
+  must_include: [rate(, 5.., histogram_quantile, _bucket]
+  expect:
+    rows: {min: 2, max: 3}
+    columns: [signal, value]
+  mistakes:
+  - {pattern: 'status_code\s*=~?\s*"(2\.\.|[23]\d\d|\(2)', message: 'Divide the errors by all requests, not only the successful
+      ones: errors / (errors + successes) is the error ratio.'}
+  - {pattern: '(max|min|avg|sum|quantile)\s*(by\s*\([^)]*\)\s*)?\(\s*histogram_quantile', message: 'Aggregate the buckets
+      first (`sum by (le, …)`), then take `histogram_quantile`. Percentiles can''t be combined with max, avg or sum afterwards.'}
+- id: answer
+  type: query
+  title: 'RED for `checkout`: requests/s, 5xx ratio and p95 latency'
+  reference: |-
+    union(
+      label_set(sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])), "signal", "rate"),
+      label_set(sum(rate(http_server_request_duration_seconds_count{service_name="checkout", http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name="checkout"}[5m])), "signal", "errors"),
+      label_set(histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m]))), "signal", "duration_p95")
+    )
+  tolerance: 0.05
+  hint: Rate needs `rate(...[5m])`; errors are 5xx divided by all requests; duration is `histogram_quantile(0.95, ...)` over
+    `_bucket`, not the average.
+  success: 'That''s checkout''s RED: a few requests per second, a couple of percent failing, and a p95 of a couple of hundred milliseconds (checkout waits for inventory and payments).'
+hints: ['Rate: the raw `_count` is a counter since start-up. Wrap it in `rate(...[5m])`.', 'Errors: divide the 5xx rate by
+    the rate of all requests, so it''s a ratio between 0 and 1.', 'Duration: replace the average with `histogram_quantile(0.95,
+    sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="checkout"}[5m])))`.']
 ---
 
 For any service that handles requests, three numbers tell you most of what

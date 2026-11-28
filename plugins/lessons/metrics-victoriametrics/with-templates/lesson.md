@@ -10,26 +10,24 @@ query:
   language: metricsql
   range_s: 900
   examples:
-    - {label: Shared label filter, query: "WITH (f = {service_name=\"checkout\"}) sum(rate(http_server_request_duration_seconds_count{f}[5m]))"}
-    - {label: Share of requests under 100 ms, query: "histogram_share(0.1, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))"}
-    - {label: Order value p90, query: "histogram_quantile(0.9, sum by (le) (rate(shop_order_value_USD_bucket[5m])))"}
+  - {label: Shared label filter, query: 'WITH (f = {service_name="checkout"}) sum(rate(http_server_request_duration_seconds_count{f}[5m]))'}
+  - {label: Share of requests under 100 ms, query: 'histogram_share(0.1, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket[5m])))'}
+  - {label: Order value p90, query: 'histogram_quantile(0.9, sum by (le) (rate(shop_order_value_USD_bucket[5m])))'}
 checks:
-  - id: uses-with
-    type: query
-    title: Use a `WITH` template
-    must_include: ["WITH ("]
-    expect: {rows: {min: 1}, columns: [app_user_tier, value]}
-    success: Defined once, used twice.
-  - id: answer
-    type: query
-    title: Average order value per user tier
-    reference: 'sum by (app_user_tier) (rate(shop_order_value_USD_sum[5m])) / sum by (app_user_tier) (rate(shop_order_value_USD_count[5m]))'
-    tolerance: 0.05
-    hint: "Average = rate of `_sum` divided by rate of `_count`, both `sum by (app_user_tier)` over `[5m]`."
-    success: Dollars per order, per tier. Gold members get 10% off, but it's a small sample, so don't read too much into the gap.
-hints:
-  - "A function template: `WITH (r(m) = sum by (app_user_tier) (rate(m[5m]))) r(a) / r(b)`."
-  - "Answer: `WITH (r(m) = sum by (app_user_tier) (rate(m[5m]))) r(shop_order_value_USD_sum) / r(shop_order_value_USD_count)`"
+- id: uses-with
+  type: query
+  title: Use a `WITH` template
+  must_include: [WITH (, rate(]
+  expect:
+    rows: {min: 1}
+    columns: [app_user_tier, value]
+  success: Defined once, used twice.
+- {id: answer, type: query, title: Average order value per user tier, reference: 'sum by (app_user_tier) (rate(shop_order_value_USD_sum[5m]))
+    / sum by (app_user_tier) (rate(shop_order_value_USD_count[5m]))', tolerance: 0.05, hint: 'Average = rate of `_sum` divided
+    by rate of `_count`, both `sum by (app_user_tier)` over `[5m]`.', success: 'Dollars per order, per tier. Gold members
+    get 10% off, but it''s a small sample, so don''t read too much into the gap.'}
+hints: ['A function template: `WITH (r(m) = sum by (app_user_tier) (rate(m[5m]))) r(a) / r(b)`.', 'Answer: `WITH (r(m) = sum
+    by (app_user_tier) (rate(m[5m]))) r(shop_order_value_USD_sum) / r(shop_order_value_USD_count)`']
 ---
 
 Ratios repeat themselves: the same `sum by (...) (rate(...[5m]))` wrapper

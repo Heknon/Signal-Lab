@@ -1,6 +1,7 @@
 ---
 title: All logs for a trace
-summary: Use trace_id to pull every line one request wrote across services, then do it for every failed checkout at once with a subquery.
+summary: Use trace_id to pull every line one request wrote across services, then do it for every failed checkout at once with
+  a subquery.
 kind: query
 minutes: 8
 concepts: [trace_id, log correlation, in() subquery, fields]
@@ -10,25 +11,31 @@ query:
   language: logsql
   range_s: 900
   examples:
-    - {label: "Step 1: recent checkout errors", query: "_time:15m service.name:=checkout severity_text:=ERROR | sort by (_time desc) | limit 5 | fields _time, trace_id, _msg"}
-    - {label: "Step 2: one trace (paste an id)", query: "_time:15m trace_id:=\"paste-a-trace-id\" | sort by (_time) | fields _time, service.name, severity_text, _msg"}
+  - {label: 'Step 1: recent checkout errors', query: '_time:15m service.name:=checkout severity_text:=ERROR | sort by (_time
+      desc) | limit 5 | fields _time, trace_id, _msg'}
+  - {label: 'Step 2: one trace (paste an id)', query: '_time:15m trace_id:="paste-a-trace-id" | sort by (_time) | fields _time,
+      service.name, severity_text, _msg'}
 checks:
-  - id: shape
-    type: query
-    title: "Filter on `trace_id` with an `in(...)` subquery"
-    must_include: ["trace_id", "in("]
-    expect: {rows: {min: 1}, columns: [_time, service.name, _msg]}
-    success: The subquery finds the traces, the outer query their logs.
-  - id: answer
-    type: query
-    title: "Every line from the traces in which checkout logged an ERROR"
-    reference: '_time:15m trace_id:in(_time:15m service.name:=checkout severity_text:=ERROR | fields trace_id)'
-    hint: "Inside `in(...)`, write the query that finds checkout's ERROR lines and end it with `| fields trace_id`. Put `_time:15m` on both the inner and the outer query, and return whole log entries."
-    success: "Every failed checkout tells the same story: checkout reserves stock, payments declines the card, checkout gets a 402 and logs `payment failed`, storefront gets a 502 and logs `checkout failed`. Six lines, three services, one trace_id."
-hints:
-  - "Run the first example, copy a `trace_id`, and use it in the second example to see what one failed request logged."
-  - "`field:in(<query> | fields other_field)` keeps entries whose `field` equals any value the subquery returns."
-  - "Answer: `_time:15m trace_id:in(_time:15m service.name:=checkout severity_text:=ERROR | fields trace_id)`"
+- id: shape
+  type: query
+  title: Filter on `trace_id` with an `in(...)` subquery
+  must_include: [trace_id, in(]
+  expect:
+    rows: {min: 1}
+    columns: [_time, service.name, _msg]
+  success: The subquery finds the traces, the outer query their logs.
+  must_match:
+  - {pattern: 'in\([^)]*service\.name\s*:=?\s*checkout', message: 'Find the traces where checkout itself logged an error:
+      filter the subquery on `service.name:=checkout`.'}
+- {id: answer, type: query, title: Every line from the traces in which checkout logged an ERROR, reference: '_time:15m trace_id:in(_time:15m
+    service.name:=checkout severity_text:=ERROR | fields trace_id)', hint: 'Inside `in(...)`, write the query that finds checkout''s
+    ERROR lines and end it with `| fields trace_id`. Put `_time:15m` on both the inner and the outer query, and return whole
+    log entries.', success: 'Every failed checkout tells the same story: checkout reserves stock, payments declines the card,
+    checkout gets a 402 and logs `payment failed`, storefront gets a 502 and logs `checkout failed`. Six lines, three services,
+    one trace_id.'}
+hints: ['Run the first example, copy a `trace_id`, and use it in the second example to see what one failed request logged.',
+  '`field:in(<query> | fields other_field)` keeps entries whose `field` equals any value the subquery returns.', 'Answer:
+    `_time:15m trace_id:in(_time:15m service.name:=checkout severity_text:=ERROR | fields trace_id)`']
 ---
 
 Lines logged inside a span carry its **`trace_id`** and **`span_id`**. One

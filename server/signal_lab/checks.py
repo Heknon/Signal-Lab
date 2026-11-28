@@ -36,10 +36,11 @@ def _value_matches(actual: Any, expected: Any) -> bool:
     if expected == "*":
         return actual is not None
     if isinstance(expected, dict):
-        try:
-            a = float(actual)
-        except (TypeError, ValueError):
+        # A bound like {gte: 1} needs a real number: the string "3" is exactly the
+        # mistake lessons about attribute types exist to catch.
+        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
             return False
+        a = float(actual)
         return all(
             {"gt": a > v, "gte": a >= v, "lt": a < v, "lte": a <= v}.get(op, True) for op, v in expected.items()
         )
@@ -47,8 +48,8 @@ def _value_matches(actual: Any, expected: Any) -> bool:
         return str(actual).lower() == str(expected).lower()
     if isinstance(expected, str) and expected.startswith("~"):
         return re.search(expected[1:], str(actual)) is not None
-    if isinstance(expected, (int, float)) and isinstance(actual, (int, float)):
-        return float(actual) == float(expected)
+    if isinstance(expected, (int, float)):
+        return isinstance(actual, (int, float)) and not isinstance(actual, bool) and float(actual) == float(expected)
     return str(actual) == str(expected)
 
 
@@ -79,15 +80,20 @@ def _span_matches(span: dict, where: dict, spans_by_id: dict[str, dict]) -> tupl
             return False, f"resource attribute `{key}` is `{span['resource'].get(key)}`, expected `{expected}`"
     if "kind" in where and span["kind"] != where["kind"]:
         return False, f"kind is `{span['kind']}`, expected `{where['kind']}`"
-    if "status" in where and span["status"]["code"] != where["status"]:
-        return False, f"status is `{span['status']['code']}`, expected `{where['status']}`"
+    if "status" in where:
+        allowed = where["status"] if isinstance(where["status"], list) else [where["status"]]
+        if span["status"]["code"] not in allowed:
+            return False, f"status is `{span['status']['code']}`, expected {' or '.join(f'`{a}`' for a in allowed)}"
     for key, expected in (where.get("attributes") or {}).items():
         if key not in span["attributes"]:
             have = list(span["attributes"].keys())
             hint = _closest(key, have)
             return False, f"missing attribute `{key}`." + (hint or (f" It has {_fmt_list(have)}." if have else " It has no attributes."))
         if not _value_matches(span["attributes"][key], expected):
-            return False, f"attribute `{key}` is `{span['attributes'][key]}`, expected `{expected}`"
+            actual = span["attributes"][key]
+            if isinstance(actual, str) and (isinstance(expected, dict) or (isinstance(expected, (int, float)) and not isinstance(expected, bool))):
+                return False, f"attribute `{key}` is the string `\"{actual}\"`; record it as a number, so it can be summed and compared"
+            return False, f"attribute `{key}` is `{actual}`, expected `{expected}`"
     for key in where.get("attributes_absent") or []:
         if key in span["attributes"]:
             return False, f"attribute `{key}` should not be set"
@@ -134,6 +140,12 @@ def check_span(check: dict, t: dict, ctx: dict) -> dict:
         elif why != "name" and why != "service":
             near.append((s, why))
     ok, need = _count_ok(len(matched), check.get("count"))
+    for key, spec in (check.get("distinct") or {}).items():  # e.g. one server.address per dependency
+        values = {str(s["attributes"].get(key)) for s in matched if key in s["attributes"]}
+        good, want = _count_ok(len(values), spec)
+        if ok and not good:
+            return result(check, FAIL, f"These spans have {len(values)} different `{key}` value(s) ({', '.join(sorted(values))}); expected {want}. "
+                          f"{check.get('distinct_hint', '')}".strip())
     if ok:
         return result(check, PASS, f"Found {len(matched)} matching span{'s' if len(matched) != 1 else ''}.")
     if not spans:
@@ -149,6 +161,56 @@ def check_span(check: dict, t: dict, ctx: dict) -> dict:
         names = [s["name"] for s in spans]
         return result(check, FAIL, f"No span named `{where['name']}`.{_closest(str(where['name']), names)} Spans seen: {_fmt_list(names)}.")
     return result(check, FAIL, f"Found {len(matched)} matching span(s), expected {need}.")
+
+
+def _describe_bound(spec: Any) -> str:
+    """{lte: 5} -> "at most 5", for failure messages."""
+    if not isinstance(spec, dict):
+        return str(spec)
+    words = {"lte": "at most", "lt": "below", "gte": "at least", "gt": "above"}
+    return " and ".join(f"{words.get(k, k)} {v:g}" if isinstance(v, (int, float)) else f"{words.get(k, k)} {v}" for k, v in spec.items())
+
+
+def _check_spread(check: dict, name: str, series: list[dict]) -> dict | None:
+    """Do the buckets fit the data? Judged on where the recorded values landed, so any
+    sensible boundaries pass, not one exact list.
+
+    spread: {max_share: 0.5, max_overflow: 0.05, min_used: 4}
+      max_share     no single bucket holds more than this share of the values
+      max_overflow  share allowed above the last boundary (and below the first)
+      min_used      at least this many buckets hold values
+    """
+    spec = check["spread"]
+    hs = [s for s in series if s.get("bounds") is not None and s.get("bucket_counts")]
+    if not hs:
+        return result(check, FAIL, f"`{name}` has no explicit buckets to judge.")
+    bounds = [float(b) for b in hs[0]["bounds"]]
+    counts = [0] * (len(bounds) + 1)
+    for s in hs:
+        if [float(b) for b in s["bounds"]] == bounds:
+            for i, c in enumerate(s["bucket_counts"]):
+                counts[i] += int(c)
+    total = sum(counts)
+    if not total:
+        return None
+    def label(i: int) -> str:
+        return f"≤{bounds[0]:g}" if i == 0 else (f">{bounds[-1]:g}" if i == len(bounds) else f"{bounds[i - 1]:g}–{bounds[i]:g}")
+    dist = ", ".join(f"{label(i)}: {c}" for i, c in enumerate(counts) if c)
+    share = [c / total for c in counts]
+    top = max(range(len(counts)), key=lambda i: counts[i])
+    if share[-1] > spec.get("max_overflow", 0.05):
+        return result(check, FAIL, f"{share[-1]:.0%} of values are above your last boundary ({bounds[-1]:g}), where all detail is lost. "
+                      f"Add boundaries up to the slowest values you expect. Where they landed: {dist}.")
+    if share[0] > max(spec.get("max_share", 0.5), spec.get("max_overflow", 0.05)) and len(bounds) > 1:
+        return result(check, FAIL, f"{share[0]:.0%} of values are at or below your first boundary ({bounds[0]:g}). "
+                      f"Your buckets start too high for this data, or the values are in a different unit. Where they landed: {dist}.")
+    if share[top] > spec.get("max_share", 0.5):
+        return result(check, FAIL, f"{share[top]:.0%} of values fall in one bucket ({label(top)}), so percentiles inside it are guesses. "
+                      f"Add boundaries where most values are. Where they landed: {dist}.")
+    used = sum(1 for c in counts if c)
+    if used < spec.get("min_used", 4):
+        return result(check, FAIL, f"Only {used} buckets hold values. Spread boundaries over the range you see. Where they landed: {dist}.")
+    return None
 
 
 def check_trace(check: dict, t: dict, ctx: dict) -> dict:
@@ -311,6 +373,10 @@ def check_metric(check: dict, t: dict, ctx: dict) -> dict:
     metrics = {m["name"]: m for m in t["metrics"]}
     name = check["name"]
     m = metrics.get(name)
+    if check.get("absent"):  # this metric should be gone
+        if m is None:
+            return result(check, PASS, f"No `{name}` metric.")
+        return result(check, FAIL, f"`{name}` is still exported. {check.get('absent_hint', '')}".strip())
     if m is None:
         pend = PENDING if ctx.get("collecting") else FAIL
         if not metrics:
@@ -338,7 +404,41 @@ def check_metric(check: dict, t: dict, ctx: dict) -> dict:
     if "value" in check:
         total = sum(float(s.get("value") or s.get("count") or 0) for s in series)
         if not _value_matches(total, check["value"]):
-            return result(check, PENDING if ctx.get("collecting") else FAIL, f"`{name}` totals {total:g}; expected {check['value']}.")
+            hint = check.get("value_hint", "")
+            return result(check, PENDING if ctx.get("collecting") else FAIL,
+                          f"`{name}` totals {total:g}; expected {_describe_bound(check['value'])}. {hint}".strip())
+    if check.get("changes"):  # the value moved during the run (an observed gauge that tracks something)
+        seen = {round(float(h.get("value", h.get("count", 0)) or 0), 9) for s in series for h in s.get("history") or []}
+        if len(seen) < 2:
+            return result(check, PENDING if ctx.get("collecting") else FAIL,
+                          f"`{name}` reported the same value every time ({', '.join(map(str, seen)) or 'none'}). {check.get('changes_hint', '')}".strip())
+    for key, values in (check.get("attribute_values") or {}).items():  # each value must occur on some series
+        seen = {str(s["attributes"].get(key)) for s in series if key in s["attributes"]}
+        lacking = [v for v in values if str(v) not in seen]
+        if lacking:
+            return result(check, PENDING if ctx.get("collecting") else FAIL,
+                          f"`{name}` never has `{key}` = {', '.join(f'`{v}`' for v in lacking)} (seen: {', '.join(sorted(seen)) or 'none'}). "
+                          f"{check.get('attribute_values_hint', '')}".strip())
+    if "mean_gap" in check:  # e.g. gold checkouts average at least 40 ms slower than the rest
+        g = check["mean_gap"]
+        def mean(pred):
+            cnt = sum(float(s.get("count") or 0) for s in series if pred(s))
+            return (sum(float(s.get("sum") or 0) for s in series if pred(s)) / cnt) if cnt else None
+        hi = mean(lambda s: str(s["attributes"].get(g["attribute"])) == str(g["high"]))
+        lo = mean(lambda s: g["attribute"] in s["attributes"] and str(s["attributes"].get(g["attribute"])) != str(g["high"]))
+        if hi is None or lo is None or hi - lo < float(g["min"]):
+            shown = ", ".join(f"{k} {v * 1000:.0f} ms" for k, v in ((g["high"], hi), ("others", lo)) if v is not None)
+            return result(check, PENDING if ctx.get("collecting") else FAIL,
+                          f"`{name}` doesn't show `{g['high']}` as slower ({shown or 'no data'}). {check.get('mean_gap_hint', '')}".strip())
+    if "max" in check:  # largest recorded value (histograms), e.g. to catch ms recorded under unit "s"
+        maxes = [float(s["max"]) for s in series if s.get("max") is not None]
+        if maxes and not _value_matches(max(maxes), check["max"]):
+            hint = check.get("max_hint", "")
+            return result(check, FAIL, f"`{name}` recorded values up to {max(maxes):g}; expected {_describe_bound(check['max'])}. {hint}".strip())
+    if "spread" in check:
+        res = _check_spread(check, name, series)
+        if res:
+            return res
     if "bounds" in check:
         bounds = series[0].get("bounds") if series else None
         if bounds is None:
@@ -355,7 +455,20 @@ def check_metric(check: dict, t: dict, ctx: dict) -> dict:
 
 
 def check_log(check: dict, t: dict, ctx: dict) -> dict:
+    """... in_span: <span name>  the record's span id must be a span with that name
+    (not just any span: logging inside an outer batch span is 'correlated' too)."""
     logs = t["logs"]
+    if "forbid_pattern" in check:  # nothing in any record, body or attributes, may match
+        rx = re.compile(check["forbid_pattern"])
+        for r in logs:
+            fields = {"body": r["body"], **r["attributes"]}
+            hit = next((k for k, v in fields.items() if rx.search(str(v))), None)
+            if hit:
+                where = "its message" if hit == "body" else f"its `{hit}` attribute"
+                return result(check, FAIL, f"A log record still carries it in {where}: `{str(fields[hit])[:60]}`. {check.get('forbid_hint', '')}".strip())
+        return result(check, PASS, "No log record matches." if logs else "No logs, so nothing leaked.")
+    span_names = {s["span_id"]: s["name"] for s in t["spans"]}
+    wrong_span: list[str] = []
     matched = []
     for r in logs:
         body = str(r["body"])
@@ -369,6 +482,9 @@ def check_log(check: dict, t: dict, ctx: dict) -> dict:
             continue
         if any(k not in r["attributes"] or not _value_matches(r["attributes"][k], v) for k, v in (check.get("attributes") or {}).items()):
             continue
+        if "in_span" in check and span_names.get(r["span_id"] or "") != check["in_span"]:
+            wrong_span.append(span_names.get(r["span_id"] or "", "no span"))
+            continue
         matched.append(r)
     ok, need = _count_ok(len(matched), check.get("count"))
     if ok:
@@ -379,6 +495,9 @@ def check_log(check: dict, t: dict, ctx: dict) -> dict:
         return result(check, FAIL, f"{len(matched)} log record(s) were written outside any span: " + _fmt_list([str(r["body"]) for r in matched], 3) + ".")
     if not logs:
         return result(check, PENDING if ctx.get("collecting") else FAIL, "No log records were exported." if not ctx.get("collecting") else "No logs yet.")
+    if wrong_span and not matched:
+        return result(check, FAIL, f"The log is linked to `{wrong_span[0]}`, not `{check['in_span']}`. "
+                      f"Log inside the `{check['in_span']}` span, so the record points at the work it describes.")
     if check.get("correlated") and not any(r["trace_id"] for r in logs):
         return result(check, FAIL, "Logs arrived, but none carry a trace id. Log inside an active span.")
     bodies = _fmt_list([str(r["body"])[:60] for r in logs], 3)

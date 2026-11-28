@@ -39,8 +39,9 @@ with tracer.start_as_current_span("process-batch", links=links):
     ...
 ```
 
-Links must be supplied when the span **starts**, because samplers can use
-them to decide whether to keep the span.
+Pass links when the span **starts** whenever you can: samplers decide at
+start, and only see the links you passed then. (`span.add_link()` exists for
+links you only learn about later, but no sampler will have seen them.)
 
 ## Try it
 

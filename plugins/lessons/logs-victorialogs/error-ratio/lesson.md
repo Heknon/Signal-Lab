@@ -10,29 +10,39 @@ query:
   language: logsql
   range_s: 900
   examples:
-    - {label: Errors and totals per service, query: "_time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count() total"}
-    - {label: "checkout's order failure ratio", query: "_time:15m scope.name:=shop.checkout | stats count() if (severity_text:=ERROR) failed, count() if (placed) placed | math failed / (failed + placed) as failure_ratio"}
+  - {label: Errors and totals per service, query: '_time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors,
+      count() total'}
+  - {label: checkout's order failure ratio, query: '_time:15m scope.name:=shop.checkout | stats count() if (severity_text:=ERROR)
+      failed, count() if (placed) placed | math failed / (failed + placed) as failure_ratio'}
 checks:
-  - id: shape
-    type: query
-    title: "Compute an `error_ratio` per service with `math`"
-    must_include: ["count()", "if", "math", "service.name"]
-    expect: {rows: {min: 2}, columns: [service.name, error_ratio]}
-    success: A ratio per service, between 0 and 1.
-  - id: answer
-    type: query
-    title: "Share of each service's log lines at ERROR, last 15 minutes"
-    reference: '_time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count() total | math errors / total as error_ratio | fields service.name, error_ratio'
-    value_columns: [error_ratio]
-    ignore_columns: [errors, total]
-    expect: {columns: [service.name, error_ratio]}
-    tolerance: 0.05
-    hint: "Count ERROR lines and all lines in the same `stats by (service.name)`, divide with `| math errors / total as error_ratio`, and end with `| fields service.name, error_ratio`. Don't filter the lines before `stats`: the total needs all of them."
-    success: "About 1% for checkout and storefront, 0 for the rest. The total includes every httpx line, so this is a share of log volume, not of requests: compare it over time, not with your SLO."
-hints:
-  - "`count() if (<filter>) name` only counts the entries in the group that match the filter."
-  - "`math a / b as c` adds a field `c` to each row."
-  - "Answer: `_time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count() total | math errors / total as error_ratio | fields service.name, error_ratio`"
+- id: shape
+  type: query
+  title: Compute an `error_ratio` per service with `math`
+  must_include: [count(), if, math, service.name]
+  expect:
+    rows: {min: 2}
+    columns: [service.name, error_ratio]
+  success: A ratio per service, between 0 and 1.
+  mistakes:
+  - {pattern: count\(\)\s*if\s*\(\s*-, message: 'Divide the errors by all log lines (`count()`), not only by the non-error
+      ones.'}
+- id: answer
+  type: query
+  title: Share of each service's log lines at ERROR, last 15 minutes
+  reference: _time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count() total | math errors / total
+    as error_ratio | fields service.name, error_ratio
+  value_columns: [error_ratio]
+  ignore_columns: [errors, total]
+  expect:
+    columns: [service.name, error_ratio]
+  tolerance: 0.05
+  hint: 'Count ERROR lines and all lines in the same `stats by (service.name)`, divide with `| math errors / total as error_ratio`,
+    and end with `| fields service.name, error_ratio`. Don''t filter the lines before `stats`: the total needs all of them.'
+  success: 'About 1% for checkout and storefront, 0 for the rest. The total includes every httpx line, so this is a share
+    of log volume, not of requests: compare it over time, not with your SLO.'
+hints: ['`count() if (<filter>) name` only counts the entries in the group that match the filter.', '`math a / b as c` adds
+    a field `c` to each row.', 'Answer: `_time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count()
+    total | math errors / total as error_ratio | fields service.name, error_ratio`']
 ---
 
 An error count on its own says little: 20 errors is bad for a service that

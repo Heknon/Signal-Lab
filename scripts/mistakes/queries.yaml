@@ -1,0 +1,55 @@
+# Query mistakes (must fail) and valid alternatives (must pass) for query lessons.
+# Code mistakes are the files next to this one: <track>__<lesson>__<name>.<ext>,
+# expected to fail unless listed under `alternatives` in scripts/test_mistakes.py.
+- lesson: metrics-victoriametrics/error-ratio
+  expect: fail
+  why: errors divided by successes, not by all requests
+  query: sum by (service_name)(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) / sum by (service_name)(rate(http_server_request_duration_seconds_count{http_response_status_code=~"2.."}[5m]))
+- lesson: logs-victorialogs/error-ratio
+  expect: fail
+  why: errors divided by non-error lines
+  query: _time:15m | stats by (service.name) count() if (severity_text:=ERROR) errors, count() if (-severity_text:=ERROR) ok | math errors / ok as error_ratio | fields service.name, error_ratio
+- lesson: metrics-victoriametrics/with-templates
+  expect: fail
+  why: no rate(), so an average since process start
+  query: WITH (r(m) = sum by (app_user_tier) (m)) r(shop_order_value_USD_sum) / r(shop_order_value_USD_count)
+- lesson: metrics-victoriametrics/aggregate
+  expect: fail
+  why: filters out failed requests
+  query: sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"2.."}[5m]))
+- lesson: metrics-victoriametrics/latency-percentiles
+  expect: fail
+  why: max of per-series percentiles
+  query: max by (service_name) (histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket[5m])))
+- lesson: metrics-victoriametrics/latency-percentiles
+  expect: pass
+  why: increase() instead of rate() is equivalent
+  query: histogram_quantile(0.95, sum by (le, service_name)(increase(http_server_request_duration_seconds_bucket[5m])))
+- lesson: logs-victorialogs/count-by
+  expect: fail
+  why: counts traces, not log lines
+  query: _time:15m severity_text:in(WARN, ERROR) | stats by (service.name) count_uniq(trace_id) logs
+- lesson: metrics-victoriametrics/select-series
+  expect: fail
+  why: no payments filter
+  query: http_server_request_duration_seconds_count{http_response_status_code="402"}
+- lesson: metrics-victoriametrics/select-series
+  expect: fail
+  why: all 4xx, not the declines
+  query: http_server_request_duration_seconds_count{service_name="payments", http_response_status_code=~"4.."}
+- lesson: practice/sli-slo
+  expect: fail
+  why: whole shop, not storefront
+  query: sum(rate(http_server_request_duration_seconds_bucket{le="0.25"}[5m])) / sum(rate(http_server_request_duration_seconds_count[5m]))
+- lesson: practice/sli-slo
+  expect: pass
+  why: le="+Inf" bucket is all requests
+  query: sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront", le="0.25"}[5m])) / sum(rate(http_server_request_duration_seconds_bucket{service_name="storefront", le="+Inf"}[5m]))
+- lesson: logs-victorialogs/field-filters
+  expect: fail
+  why: WARN and above, not errors
+  query: _time:15m service.name:=checkout severity_number:>=13
+- lesson: logs-victorialogs/trace-logs
+  expect: fail
+  why: any service's errors, not checkout's
+  query: _time:15m trace_id:in(_time:15m severity_text:=ERROR | fields trace_id)

@@ -5,23 +5,21 @@ kind: code
 minutes: 6
 concepts: [up-down counter, observable gauge, callbacks]
 assumes: [Counters]
-runtime:
-  service: job-runner
+runtime: {service: job-runner}
 checks:
-  - id: active
-    type: metric
-    title: "`jobs.active` is an up-down counter"
-    name: jobs.active
-    instrument: updowncounter
-  - id: queue
-    type: metric
-    title: "`queue.length` is an observable gauge"
-    name: queue.length
-    instrument: gauge
-    attributes: [app.queue.name]
-hints:
-  - "`meter.create_up_down_counter(\"jobs.active\")`, then `.add(1)` when a job starts and `.add(-1)` when it ends."
-  - "`meter.create_observable_gauge(\"queue.length\", callbacks=[observe])`, where `observe` yields `metrics.Observation(value, attributes)`."
+- {id: active, type: metric, title: '`jobs.active` is an up-down counter that is back at 0 when the queue is empty', name: jobs.active,
+  instrument: updowncounter, value: 0, value_hint: 'Every job that starts must be subtracted again when it ends: an up-down
+    counter goes back down.'}
+- id: queue
+  type: metric
+  title: '`queue.length` is an observed gauge that follows the queue as it drains'
+  name: queue.length
+  instrument: gauge
+  attributes: [app.queue.name]
+  changes: true
+  changes_hint: Read the queue length inside the callback, so each collection observes the current value.
+hints: ['`meter.create_up_down_counter("jobs.active")`, then `.add(1)` when a job starts and `.add(-1)` when it ends.', '`meter.create_observable_gauge("queue.length",
+    callbacks=[observe])`, where `observe` yields `metrics.Observation(value, attributes)`.']
 ---
 
 Not everything only goes up. Two instruments cover values that move both ways:

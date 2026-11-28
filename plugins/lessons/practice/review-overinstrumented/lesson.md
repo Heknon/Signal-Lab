@@ -5,63 +5,64 @@ kind: code
 minutes: 12
 concepts: [telemetry review, duplicate signals, span granularity, PII, cardinality, telemetry budget]
 assumes: [Spans, Metrics, Structured logs, Span status and exceptions]
-runtime:
-  service: checkout-service
+runtime: {service: checkout-service}
 checks:
-  - id: checkout-span
-    type: span
-    title: One root `checkout` span per order, with the item count in `app.cart.items`
-    where:
-      name: checkout
-      parent: root
-      attributes: {app.cart.items: {gte: 1}}
-    count: 12
-  - id: declined
-    type: span
-    title: Each declined order's `checkout` span has status `error` and the exception
-    where: {name: checkout, status: error, exception: true}
-    count: 3
-  - id: no-item-spans
-    type: span
-    title: No span per cart item
-    where: {name: add item}
-    count: {max: 0}
-  - id: no-card-span
-    type: span
-    title: No span carries the card number
-    where:
-      attributes: {app.card.number: "*"}
-    count: {max: 0}
-  - id: no-card-log
-    type: log
-    title: No log line contains a card number
-    body: "~(?<!\\d)\\d{13,16}(?!\\d)"
-    count: {max: 0}
-  - id: orders-metric
-    type: metric
-    title: "`orders` counts checkouts by `outcome`, not by user"
-    name: orders
-    instrument: counter
-    attributes: [outcome]
-    attributes_absent: [app.user.id]
-    absent_hint: A user id gives every customer their own time series. It's already on the span.
-  - id: declines-not-errors
-    type: log
-    title: A declined card is not logged at ERROR
-    severity: ERROR
-    count: {max: 0}
-  - id: budget
-    type: budget
-    title: "Within budget: 24 spans, 3 series, 4 log records"
-    spans: {max: 24}
-    series: {max: 3}
-    logs: {max: 4}
-    hint: Look for signals that repeat what another signal already says.
-hints:
-  - "Replace the `add item` loop with plain arithmetic and set `span.set_attribute(\"app.cart.items\", ...)` on `checkout`."
-  - "Delete the `checkout.failures` counter: `orders{outcome=\"declined\"}` already counts declines. Drop `app.user.id` from `orders`."
-  - "`service.started` is a counter that is incremented once in the process's life, with a timestamp as an attribute. A single `log.info(\"checkout service started\")` says the same."
-  - "Keep `span.record_exception(e)` and `set_status(...)`. Remove `log.exception(...)` and both per-request `log.info(...)` calls."
+- id: checkout-span
+  type: span
+  title: One root `checkout` span per order, with the item count in `app.cart.items`
+  where:
+    name: checkout
+    parent: root
+    attributes:
+      app.cart.items: {gte: 1}
+  count: 12
+- id: declined
+  type: span
+  title: Each declined order's `checkout` span has status `error` and the exception
+  where: {name: checkout, status: error, exception: true}
+  count: 3
+- id: no-item-spans
+  type: span
+  title: No span per cart item
+  where: {name: add item}
+  count: {max: 0}
+- id: no-card-span
+  type: span
+  title: No span carries the card number
+  where:
+    attributes: {app.card.number: '*'}
+  count: {max: 0}
+- {id: no-card-log, type: log, title: 'No log record carries a card number, in its message or its attributes', forbid_pattern: '(?<!\d)\d{13,16}(?!\d)',
+  forbid_hint: 'Card numbers must not leave the process: not in messages, not in attributes.'}
+- id: orders-metric
+  type: metric
+  title: '`orders` counts checkouts by `outcome`, not by user'
+  name: orders
+  instrument: counter
+  attributes: [outcome]
+  attributes_absent: [app.user.id]
+  absent_hint: A user id gives every customer their own time series. It's already on the span.
+- {id: no-failures-metric, type: metric, title: The duplicate `checkout.failures` counter is gone, name: checkout.failures,
+  absent: true, absent_hint: 'It repeats `orders{outcome="failed"}`. Two metrics for one fact drift apart.'}
+- {id: no-started-metric, type: metric, title: '`service.started` is a log line, not a counter', name: service.started, absent: true,
+  absent_hint: 'A start-up is an event that happens once: log it.'}
+- id: declines-not-errors
+  type: log
+  title: A declined card is not logged at ERROR
+  severity: ERROR
+  count: {max: 0}
+- id: budget
+  type: budget
+  title: 'Within budget: 24 spans, 3 series, 4 log records'
+  spans: {max: 24}
+  series: {max: 3}
+  logs: {max: 4}
+  hint: Look for signals that repeat what another signal already says.
+hints: ['Replace the `add item` loop with plain arithmetic and set `span.set_attribute("app.cart.items", ...)` on `checkout`.',
+  'Delete the `checkout.failures` counter: `orders{outcome="declined"}` already counts declines. Drop `app.user.id` from `orders`.',
+  '`service.started` is a counter that is incremented once in the process''s life, with a timestamp as an attribute. A single
+    `log.info("checkout service started")` says the same.', Keep `span.record_exception(e)` and `set_status(...)`. Remove
+    `log.exception(...)` and both per-request `log.info(...)` calls.]
 ---
 
 Instrumentation accumulates. Someone adds a log to debug an incident,

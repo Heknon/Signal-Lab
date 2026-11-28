@@ -65,6 +65,7 @@ jobs:
           for i in $(seq 1 60); do curl -fs localhost:8000/api/health >/dev/null && break; sleep 5; done
           sleep 30
       - run: python3 scripts/test_lessons.py
+      - run: pip install pyyaml && python3 scripts/test_mistakes.py   # known mistakes fail, valid alternatives pass
       - run: pip install pyyaml && python3 scripts/test_incidents.py
         if: github.event_name != 'pull_request'
       - if: failure()

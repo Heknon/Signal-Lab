@@ -6,24 +6,21 @@ filename: collector.yaml
 minutes: 7
 concepts: [filter processor, OTTL conditions]
 assumes: [Collector pipelines]
-runtime:
-  service: web-api
-collector:
-  settle_s: 2
+runtime: {service: web-api}
+collector: {settle_s: 2}
 checks:
-  - id: dropped
-    type: span
-    title: No `GET /healthz` spans get through
-    where: {name: GET /healthz}
-    count: {max: 0}
-  - id: kept
-    type: span
-    title: The 20 real requests still arrive
-    where: {name: "~^(GET /api/items|POST /api/orders)$"}
-    count: {min: 25}
-hints:
-  - "Add a processor named `filter/healthz` with `traces: span: [...]` conditions, and list it in the pipeline."
-  - "The condition is OTTL: `attributes[\"http.route\"] == \"/healthz\"`."
+- id: dropped
+  type: span
+  title: No `GET /healthz` spans get through
+  where: {name: GET /healthz}
+  count: {max: 0}
+- id: kept
+  type: span
+  title: The 25 real requests still arrive
+  where: {name: ~^(GET /api/items|POST /api/orders)$}
+  count: {min: 25}
+hints: ['Add a processor named `filter/healthz` with `traces: span: [...]` conditions, and list it in the pipeline.', 'The
+    condition is OTTL: `attributes["http.route"] == "/healthz"`.']
 ---
 
 Load balancers and Kubernetes probe `/healthz` every few seconds. Those

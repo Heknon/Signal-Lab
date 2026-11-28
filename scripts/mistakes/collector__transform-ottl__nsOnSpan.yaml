@@ -1,0 +1,19 @@
+processors:
+  batch:
+    timeout: 200ms
+  transform/legacy:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["url.path"], attributes["http.target"]) where attributes["http.target"] != nil
+          - replace_pattern(attributes["url.path"], "\\?.*", "")
+          - delete_key(attributes, "http.target")
+          - set(resource.attributes["service.namespace"], "shop")
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform/legacy, batch]
+      exporters: [otlphttp/lab]

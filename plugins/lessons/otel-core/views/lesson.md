@@ -5,30 +5,27 @@ kind: code
 minutes: 8
 concepts: [View, MeterProvider, aggregation]
 assumes: [Histograms, Cardinality]
-runtime:
-  service: api-gateway
-  auto_instrument: false
+runtime: {service: api-gateway, auto_instrument: false}
 checks:
-  - id: dropped
-    type: metric
-    title: "`http.server.requests` keeps only `http.route`"
-    name: http.server.requests
-    attributes: [http.route]
-    attributes_absent: [user.id, http.user_agent]
-  - id: series
-    type: metric
-    title: That leaves at most 3 series
-    name: http.server.requests
-    series: {max: 3}
-  - id: buckets
-    type: metric
-    title: "`http.server.latency` uses buckets [0.05, 0.1, 0.25, 0.5, 1]"
-    name: http.server.latency
-    bounds: [0.05, 0.1, 0.25, 0.5, 1]
-hints:
-  - "`View(instrument_name=\"http.server.requests\", attribute_keys={\"http.route\"})`"
-  - "`View(instrument_name=\"http.server.latency\", aggregation=ExplicitBucketHistogramAggregation([0.05, 0.1, 0.25, 0.5, 1]))`"
-  - "Pass both in `MeterProvider(metric_readers=[reader], resource=..., views=[...])`."
+- id: dropped
+  type: metric
+  title: '`http.server.requests` keeps only `http.route`'
+  name: http.server.requests
+  attributes: [http.route]
+  attributes_absent: [user.id, http.user_agent]
+- id: series
+  type: metric
+  title: That leaves at most 3 series
+  name: http.server.requests
+  series: {max: 3}
+- id: buckets
+  type: metric
+  title: '`http.server.latency` has buckets that fit its latencies'
+  name: http.server.latency
+  spread: {max_share: 0.6, max_overflow: 0.05, min_used: 3}
+hints: ['`View(instrument_name="http.server.requests", attribute_keys={"http.route"})`', '`View(instrument_name="http.server.latency",
+    aggregation=ExplicitBucketHistogramAggregation([0.05, 0.1, 0.25, 0.5, 1]))`', 'Pass both in `MeterProvider(metric_readers=[reader],
+    resource=..., views=[...])`.']
 ---
 
 Sometimes the code recording a metric isn't yours (a library, or
