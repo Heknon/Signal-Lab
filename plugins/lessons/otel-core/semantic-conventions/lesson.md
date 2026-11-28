@@ -53,7 +53,8 @@ Kind matters because one remote call produces **two spans**: a `client` span in
 the caller and a `server` span in the callee, with the same trace id. Backends
 use the pair:
 
-- **Service maps** draw an edge for each `client` → `server` pair.
+- **Service maps** draw an edge for each `client` → `server` pair. The **Map**
+  tab next to Traces draws one from your run, the same way.
 - **Network time** is the gap between them: the client span lasts as long as the
   caller waited, the server span only as long as the callee worked. A slow
   client span around a fast server span points at the network, DNS, a proxy or a
@@ -96,8 +97,12 @@ query string into a separate operation.
 ## Try it
 
 This code fakes an HTTP call with home-made attribute names. Make it a
-`client` span named `GET` that follows the HTTP conventions. After running,
-click the span in the Traces tab: its details show the kind next to the name.
+`client` span named `GET` that follows the HTTP conventions.
+
+Run the starter first and open the **Map** tab: `price-fetcher` stands alone,
+because an `internal` span doesn't say it called anything. Run your fix and
+the map gains an arrow to `api.prices.example`, drawn dashed because that API
+isn't instrumented: it's known only from your client span's `server.address`.
 
 In real code you rarely write this by hand: the `requests` and `httpx`
 instrumentations create these client spans for you, as the auto-instrumentation

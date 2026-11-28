@@ -538,6 +538,15 @@ a.confirm:hover { background: var(--hover); }
 /* ------------------------------------------------------------------ scenario drawer */
 .svc-map { display: block; width: 100%; margin: 0 0 18px; }
 .svc-map text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+.svc-map text.external { fill: var(--text-2); }
+.svc-map .svc-edge-label { font-size: 10px; fill: var(--text-3); }
+.svc-edge.clickable { cursor: pointer; }
+.svc-edge.clickable:hover path:first-of-type { stroke: var(--text-2); }
+.map-view { padding: 12px 14px; }
+.map-view .svc-map { margin: 8px 0 12px; }
+.map-summary { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.empty-line { color: var(--text-3); font-size: 13px; padding: 4px 0; }
+.empty-line code { font-family: var(--font-mono); font-size: 12px; }
 .svc-card { padding: 12px 14px; margin-bottom: 10px; }
 .svc-head { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
 .svc-head h4 { margin: 0; font-family: var(--font-mono); font-size: 13px; font-weight: 600; }

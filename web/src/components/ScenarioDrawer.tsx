@@ -1,55 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import { api, type Scenario, type ScenarioService } from "../api";
 import { useLab } from "../context";
 import { useAsync } from "../lib/hooks";
-import { serviceColor } from "../lib/format";
+import { ServiceGraph } from "./ServiceGraph";
 import { Empty } from "./ui";
 
 function ServiceMap({ services }: { services: ScenarioService[] }) {
-  // Lay services out in columns by call depth.
-  const layout = useMemo(() => {
-    const depth = new Map<string, number>();
-    const roots = services.filter((s) => !services.some((o) => o.calls.includes(s.id)));
-    const visit = (id: string, d: number) => {
-      if ((depth.get(id) ?? -1) >= d) return;
-      depth.set(id, d);
-      services.find((s) => s.id === id)?.calls.forEach((c) => visit(c, d + 1));
-    };
-    roots.forEach((r) => visit(r.id, 0));
-    services.forEach((s) => { if (!depth.has(s.id)) depth.set(s.id, 0); });
-    const cols = new Map<number, string[]>();
-    services.forEach((s) => { const d = depth.get(s.id)!; cols.set(d, [...(cols.get(d) ?? []), s.id]); });
-    const W = 420, pad = 54, colW = (W - pad * 2) / Math.max(1, cols.size - 1 || 1), H = Math.max(...[...cols.values()].map((c) => c.length)) * 44 + 12;
-    const pos = new Map<string, { x: number; y: number }>();
-    [...cols.entries()].forEach(([d, ids]) => ids.forEach((id, i) => pos.set(id, { x: cols.size === 1 ? W / 2 : pad + d * colW, y: (H / (ids.length + 1)) * (i + 1) })));
-    return { pos, W, H };
-  }, [services]);
-
-  return (
-    <svg className="svc-map" viewBox={`0 0 ${layout.W} ${layout.H}`} role="img" aria-label="Service map">
-      <defs>
-        <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--text-3)" /></marker>
-      </defs>
-      {services.flatMap((s) => s.calls.map((c) => {
-        const a = layout.pos.get(s.id), b = layout.pos.get(c);
-        if (!a || !b) return null;
-        return <line key={`${s.id}-${c}`} x1={a.x + 46} y1={a.y} x2={b.x - 50} y2={b.y} stroke="var(--border-strong)" strokeWidth="1.2" markerEnd="url(#arrow)" />;
-      }))}
-      {services.map((s) => {
-        const p = layout.pos.get(s.id)!;
-        const chaos = s.stats?.chaos;
-        const faulty = !!chaos && (chaos.latency_ms > 0 || chaos.error_rate > 0);
-        return (
-          <g key={s.id} transform={`translate(${p.x - 46},${p.y - 13})`}>
-            <rect width="92" height="26" rx="7" fill="var(--surface-2)" stroke={faulty ? "var(--warn)" : s.online ? "var(--border-strong)" : "var(--err)"} />
-            <circle cx="12" cy="13" r="3.5" fill={s.online ? serviceColor(s.id) : "var(--err)"} />
-            <text x="22" y="17">{s.id}</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
+  const nodes = services.map((s) => {
+    const chaos = s.stats?.chaos;
+    const faulty = !!chaos && (chaos.latency_ms > 0 || chaos.error_rate > 0);
+    return { id: s.id, stroke: faulty ? "var(--warn)" : s.online ? undefined : "var(--err)", dot: s.online ? undefined : "var(--err)" };
+  });
+  const edges = services.flatMap((s) => s.calls.map((c) => ({ from: s.id, to: c })));
+  return <ServiceGraph nodes={nodes} edges={edges} />;
 }
 
 function Slider({ label, value, min, max, step, format, onCommit }: { label: string; value: number; min: number; max: number; step: number; format: (v: number) => string; onCommit: (v: number) => void }) {
