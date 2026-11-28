@@ -151,6 +151,56 @@ def check_span(check: dict, t: dict, ctx: dict) -> dict:
     return result(check, FAIL, f"Found {len(matched)} matching span(s), expected {need}.")
 
 
+def _describe_bound(spec: Any) -> str:
+    """{lte: 5} -> "at most 5", for failure messages."""
+    if not isinstance(spec, dict):
+        return str(spec)
+    words = {"lte": "at most", "lt": "below", "gte": "at least", "gt": "above"}
+    return " and ".join(f"{words.get(k, k)} {v:g}" if isinstance(v, (int, float)) else f"{words.get(k, k)} {v}" for k, v in spec.items())
+
+
+def _check_spread(check: dict, name: str, series: list[dict]) -> dict | None:
+    """Do the buckets fit the data? Judged on where the recorded values landed, so any
+    sensible boundaries pass, not one exact list.
+
+    spread: {max_share: 0.5, max_overflow: 0.05, min_used: 4}
+      max_share     no single bucket holds more than this share of the values
+      max_overflow  share allowed above the last boundary (and below the first)
+      min_used      at least this many buckets hold values
+    """
+    spec = check["spread"]
+    hs = [s for s in series if s.get("bounds") is not None and s.get("bucket_counts")]
+    if not hs:
+        return result(check, FAIL, f"`{name}` has no explicit buckets to judge.")
+    bounds = [float(b) for b in hs[0]["bounds"]]
+    counts = [0] * (len(bounds) + 1)
+    for s in hs:
+        if [float(b) for b in s["bounds"]] == bounds:
+            for i, c in enumerate(s["bucket_counts"]):
+                counts[i] += int(c)
+    total = sum(counts)
+    if not total:
+        return None
+    def label(i: int) -> str:
+        return f"≤{bounds[0]:g}" if i == 0 else (f">{bounds[-1]:g}" if i == len(bounds) else f"{bounds[i - 1]:g}–{bounds[i]:g}")
+    dist = ", ".join(f"{label(i)}: {c}" for i, c in enumerate(counts) if c)
+    share = [c / total for c in counts]
+    top = max(range(len(counts)), key=lambda i: counts[i])
+    if share[-1] > spec.get("max_overflow", 0.05):
+        return result(check, FAIL, f"{share[-1]:.0%} of values are above your last boundary ({bounds[-1]:g}), where all detail is lost. "
+                      f"Add boundaries up to the slowest values you expect. Where they landed: {dist}.")
+    if share[0] > max(spec.get("max_share", 0.5), spec.get("max_overflow", 0.05)) and len(bounds) > 1:
+        return result(check, FAIL, f"{share[0]:.0%} of values are at or below your first boundary ({bounds[0]:g}). "
+                      f"Your buckets start too high for this data, or the values are in a different unit. Where they landed: {dist}.")
+    if share[top] > spec.get("max_share", 0.5):
+        return result(check, FAIL, f"{share[top]:.0%} of values fall in one bucket ({label(top)}), so percentiles inside it are guesses. "
+                      f"Add boundaries where most values are. Where they landed: {dist}.")
+    used = sum(1 for c in counts if c)
+    if used < spec.get("min_used", 4):
+        return result(check, FAIL, f"Only {used} buckets hold values. Spread boundaries over the range you see. Where they landed: {dist}.")
+    return None
+
+
 def check_trace(check: dict, t: dict, ctx: dict) -> dict:
     traces: dict[str, list[dict]] = defaultdict(list)
     for s in t["spans"]:
@@ -339,6 +389,15 @@ def check_metric(check: dict, t: dict, ctx: dict) -> dict:
         total = sum(float(s.get("value") or s.get("count") or 0) for s in series)
         if not _value_matches(total, check["value"]):
             return result(check, PENDING if ctx.get("collecting") else FAIL, f"`{name}` totals {total:g}; expected {check['value']}.")
+    if "max" in check:  # largest recorded value (histograms), e.g. to catch ms recorded under unit "s"
+        maxes = [float(s["max"]) for s in series if s.get("max") is not None]
+        if maxes and not _value_matches(max(maxes), check["max"]):
+            hint = check.get("max_hint", "")
+            return result(check, FAIL, f"`{name}` recorded values up to {max(maxes):g}; expected {_describe_bound(check['max'])}. {hint}".strip())
+    if "spread" in check:
+        res = _check_spread(check, name, series)
+        if res:
+            return res
     if "bounds" in check:
         bounds = series[0].get("bounds") if series else None
         if bounds is None:

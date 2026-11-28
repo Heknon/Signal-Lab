@@ -93,3 +93,18 @@ def test_intellisense_completes_and_documents_otel():
     assert sig["name"] == "set_attribute" and sig["index"] == 1 and sig["params"][sig["index"]].startswith("value")
     hov = asyncio.run(intellisense.hover(code, code.index("start_as_current_span") + 3))
     assert hov and "start_as_current_span" in hov["title"]
+
+
+def test_histogram_spread_and_max():
+    def hist(bounds, counts, mx):
+        return {"name": "d", "unit": "s", "instrument": "histogram",
+                "series": [{"attributes": {}, "bounds": bounds, "bucket_counts": counts, "count": sum(counts), "max": mx}]}
+    spread = {"type": "metric", "name": "d", "spread": {"max_share": 0.5, "max_overflow": 0.05, "min_used": 4}}
+    good = hist([0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1], [2, 30, 80, 60, 25, 3, 0, 0], 0.4)
+    assert run(spread, metrics=[good])["status"] == "pass"
+    overflow = run(spread, metrics=[hist([0.01, 0.1, 1], [0, 0, 0, 200], 235)])
+    assert overflow["status"] == "fail" and "above your last boundary" in overflow["detail"]
+    lumped = run(spread, metrics=[hist([0.1, 0.5, 1, 2], [186, 14, 0, 0, 0], 0.4)])
+    assert lumped["status"] == "fail" and "first boundary" in lumped["detail"]
+    r = run({"type": "metric", "name": "d", "max": {"lte": 5}}, metrics=[hist([1], [0, 200], 235.3)])
+    assert r["status"] == "fail" and "at most 5" in r["detail"]
