@@ -17,3 +17,6 @@ opentelemetry-instrumentation-requests==0.66b2
 opentelemetry-instrumentation-logging==0.66b2
 psycopg[binary]==3.3.9
 psycopg-pool==3.3.3
+# Editor completions, signature help and hover docs (static analysis, offline).
+jedi==0.20.1
+parso==0.8.7

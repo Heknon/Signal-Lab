@@ -73,3 +73,23 @@ def test_map_producer_names_its_queue():
     assert run({"type": "map", "edge": {"from": "price-fetcher", "to": "price-updates"}}, [p])["status"] == "pass"
     unnamed = span("send price-updates", sid="p", kind="producer", service="price-fetcher")
     assert checks.service_map([unnamed])["edges"][0]["to"] == "price-updates"
+
+
+def test_intellisense_completes_and_documents_otel():
+    import asyncio
+
+    from signal_lab import intellisense
+
+    if not intellisense.available():
+        return
+    code = "from opentelemetry import trace\ntracer = trace.get_tracer('x')\nwith tracer.start_as_current_span('a') as span:\n    span.set_"
+    res = asyncio.run(intellisense.complete(code, len(code)))
+    labels = [i["label"] for i in res["items"]]
+    assert "set_attribute" in labels and res["from"] == len(code) - len("set_")
+    item = next(i for i in res["items"] if i["label"] == "set_attribute")
+    assert "key: str" in item["detail"] and item["doc"]
+    call = code.replace("span.set_", "span.set_attribute('k', ")
+    sig = asyncio.run(intellisense.signatures(call, len(call)))
+    assert sig["name"] == "set_attribute" and sig["index"] == 1 and sig["params"][sig["index"]].startswith("value")
+    hov = asyncio.run(intellisense.hover(code, code.index("start_as_current_span") + 3))
+    assert hov and "start_as_current_span" in hov["title"]

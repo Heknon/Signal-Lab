@@ -6,3 +6,6 @@ services:
     volumes:
       - ./web/dist:/app/web/dist:ro
       - ./server:/app/server:ro
+  runner:
+    volumes:
+      - ./server:/app/server:ro
